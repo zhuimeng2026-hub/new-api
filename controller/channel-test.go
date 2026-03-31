@@ -53,6 +53,12 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if channel != nil && channel.Type == constant.ChannelTypeCodex {
 		return string(constant.EndpointTypeOpenAIResponse)
 	}
+	// GLM-5 series models only support Anthropic endpoint on Zhipu
+	if channel != nil && channel.Type == constant.ChannelTypeZhipu_v4 {
+		if strings.HasPrefix(modelName, "glm-5") {
+			return string(constant.EndpointTypeAnthropic)
+		}
+	}
 	return normalized
 }
 
