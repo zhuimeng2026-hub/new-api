@@ -1,4 +1,4 @@
-module github.com/QuantumNous/new-api
+module github.com/zhuimeng2026-hub/new-api
 
 // +heroku goVersion go1.18
 go 1.25.1

@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/config"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/setting/performance_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/zhuimeng2026-hub/new-api/common"
+	"github.com/zhuimeng2026-hub/new-api/setting"
+	"github.com/zhuimeng2026-hub/new-api/setting/config"
+	"github.com/zhuimeng2026-hub/new-api/setting/operation_setting"
+	"github.com/zhuimeng2026-hub/new-api/setting/performance_setting"
+	"github.com/zhuimeng2026-hub/new-api/setting/ratio_setting"
+	"github.com/zhuimeng2026-hub/new-api/setting/system_setting"
 )
 
 type Option struct {

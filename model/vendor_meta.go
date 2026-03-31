@@ -1,7 +1,7 @@
 package model
 
 import (
-	"github.com/QuantumNous/new-api/common"
+	"github.com/zhuimeng2026-hub/new-api/common"
 
 	"gorm.io/gorm"
 )

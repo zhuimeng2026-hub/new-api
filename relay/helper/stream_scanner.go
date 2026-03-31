@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/logger"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/zhuimeng2026-hub/new-api/common"
+	"github.com/zhuimeng2026-hub/new-api/constant"
+	"github.com/zhuimeng2026-hub/new-api/logger"
+	relaycommon "github.com/zhuimeng2026-hub/new-api/relay/common"
+	"github.com/zhuimeng2026-hub/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
 

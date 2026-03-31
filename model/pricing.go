@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/zhuimeng2026-hub/new-api/common"
+	"github.com/zhuimeng2026-hub/new-api/constant"
+	"github.com/zhuimeng2026-hub/new-api/setting/ratio_setting"
+	"github.com/zhuimeng2026-hub/new-api/types"
 )
 
 type Pricing struct {

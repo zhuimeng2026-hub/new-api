@@ -1,6 +1,6 @@
 package palm
 
-import "github.com/QuantumNous/new-api/dto"
+import "github.com/zhuimeng2026-hub/new-api/dto"
 
 type PaLMChatMessage struct {
 	Author  string `json:"author"`

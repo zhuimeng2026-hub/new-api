@@ -4,6 +4,45 @@
 
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
 
+## Build and Run Commands
+
+### Backend (Go)
+```bash
+# Run in development mode
+go run main.go
+
+# Build for current platform
+go build -ldflags "-s -w -X 'main.Version=$(git describe --tags)' -extldflags '-static'" -o new-api
+
+# Run tests (uses SQLite in-memory by default)
+go test ./...
+go test -v ./service/...
+go test -v ./relay/channel/...
+```
+
+### Frontend (React/Vite)
+```bash
+cd web
+bun install                    # Install dependencies
+bun run dev                   # Development server (proxies to localhost:3000)
+bun run build                 # Production build (outputs to web/dist)
+bun run lint / bun run lint:fix   # Prettier formatting
+bun run eslint / bun run eslint:fix  # ESLint checks
+```
+
+### Full Build (makefile)
+```bash
+make all    # Builds frontend then starts backend
+```
+
+### Docker
+```bash
+docker-compose up -d    # Start with PostgreSQL + Redis
+```
+
+### Default Credentials
+- First run creates root user: username `root`, password `123456`
+
 ## Tech Stack
 
 - **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM
@@ -20,10 +59,11 @@ Layered architecture: Router -> Controller -> Service -> Model
 ```
 router/        — HTTP routing (API, relay, dashboard, web)
 controller/    — Request handlers
-service/       — Business logic
+service/       — Business logic (billing, channel affinity, quota, task orchestration)
 model/         — Data models and DB access (GORM)
 relay/         — AI API relay/proxy with provider adapters
   relay/channel/ — Provider-specific adapters (openai/, claude/, gemini/, aws/, etc.)
+  relay/relay_adaptor.go — Adaptor factory by API type
 middleware/    — Auth, rate limiting, CORS, logging, distribution
 setting/       — Configuration management (ratio, model, operation, system, performance)
 common/        — Shared utilities (JSON, crypto, Redis, env, rate-limit, etc.)
@@ -36,6 +76,23 @@ pkg/           — Internal packages (cachex, ionet)
 web/           — React frontend
   web/src/i18n/  — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
 ```
+
+### Key Architectural Patterns
+
+**Relay Adaptor Pattern:**
+- Entry point: `relay/relay_adaptor.go` — `GetAdaptor(apiType)` returns provider-specific adaptor
+- Each provider in `relay/channel/` implements `channel.Adaptor` interface
+- Channel types defined in `constant/channel.go`
+- Request flow: Router → relay handlers → adaptor → upstream API
+
+**Database Cross-Compatibility:**
+- `model/main.go` contains DB-agnostic column quoting (`commonGroupCol`, `commonKeyCol`)
+- Boolean handling: `commonTrueVal`/`commonFalseVal` differ by DB type
+- Detection flags: `common.UsingPostgreSQL`, `common.UsingSQLite`, `common.UsingMySQL`
+
+**Request DTOs for Relay:**
+- Located in `dto/` directory
+- Must use pointer types for optional scalars (Rule 6)
 
 ## Internationalization (i18n)
 
@@ -99,11 +156,14 @@ Use `bun` as the preferred package manager and script runner for the frontend (`
 - `bun run build` for production build
 - `bun run i18n:*` for i18n tooling
 
-### Rule 4: New Channel StreamOptions Support
+### Rule 4: Adding a New Channel/Provider
 
-When implementing a new channel:
-- Confirm whether the provider supports `StreamOptions`.
-- If supported, add the channel to `streamSupportedChannels`.
+To add a new AI provider channel:
+1. Add channel type constant in `constant/channel.go` and `ChannelBaseURLs`
+2. Create adaptor in `relay/channel/<provider>/` implementing `channel.Adaptor`
+3. Register adaptor in `relay/relay_adaptor.go` `GetAdaptor()` switch
+4. Add API type constant in `constant/api_type.go` if needed
+5. Update routing in `router/relay-router.go` if new endpoint paths needed
 
 ### Rule 5: Protected Project Information — DO NOT Modify or Delete
 
