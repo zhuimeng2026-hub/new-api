@@ -1,8 +1,12 @@
-# CLAUDE.md — Project Conventions for new-api
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Overview
 
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
+
+Go module: `github.com/zhuimeng2026-hub/new-api`
 
 ## Build and Run Commands
 
@@ -14,10 +18,15 @@ go run main.go
 # Build for current platform
 go build -ldflags "-s -w -X 'main.Version=$(git describe --tags)' -extldflags '-static'" -o new-api
 
-# Run tests (uses SQLite in-memory by default)
+# Run all tests (uses SQLite in-memory by default)
 go test ./...
+
+# Run a single package's tests
 go test -v ./service/...
 go test -v ./relay/channel/...
+
+# Run a specific test
+go test -v -run TestFunctionName ./path/to/package/
 ```
 
 ### Frontend (React/Vite)
@@ -32,7 +41,7 @@ bun run eslint / bun run eslint:fix  # ESLint checks
 
 ### Full Build (makefile)
 ```bash
-make all    # Builds frontend then starts backend
+make all    # Builds frontend (bun) then starts backend (go run)
 ```
 
 ### Docker
@@ -45,7 +54,7 @@ docker-compose up -d    # Start with PostgreSQL + Redis
 
 ## Tech Stack
 
-- **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM
+- **Backend**: Go 1.22+ (go.mod specifies 1.25.1), Gin web framework, GORM v2 ORM
 - **Frontend**: React 18, Vite, Semi Design UI (@douyinfe/semi-ui)
 - **Databases**: SQLite, MySQL, PostgreSQL (all three must be supported)
 - **Cache**: Redis (go-redis) + in-memory cache
@@ -81,9 +90,21 @@ web/           — React frontend
 
 **Relay Adaptor Pattern:**
 - Entry point: `relay/relay_adaptor.go` — `GetAdaptor(apiType)` returns provider-specific adaptor
-- Each provider in `relay/channel/` implements `channel.Adaptor` interface
+- Interface defined in `relay/channel/adapter.go` (note: file uses American spelling, type uses British)
+- Each provider in `relay/channel/` implements `channel.Adaptor` interface with these key methods:
+  - `Init`, `GetRequestURL`, `SetupRequestHeader`, `DoRequest`, `DoResponse`
+  - `ConvertOpenAIRequest`, `ConvertClaudeRequest`, `ConvertGeminiRequest` — format-specific converters
+  - `ConvertRerankRequest`, `ConvertEmbeddingRequest`, `ConvertAudioRequest`, `ConvertImageRequest`, `ConvertOpenAIResponsesRequest`
+  - `GetModelList`, `GetChannelName`
 - Channel types defined in `constant/channel.go`
-- Request flow: Router → relay handlers → adaptor → upstream API
+- Request flow: Router → relay handler files (`relay/*_handler.go`) → adaptor → upstream API
+- Each relay mode has its own handler: `chat` (compatible_handler.go), `claude`, `gemini`, `audio`, `image`, `embedding`, `rerank`, `responses`, `mjproxy`
+
+**Task Adaptor Pattern (async tasks like video/image generation):**
+- `channel.TaskAdaptor` interface in `relay/channel/adapter.go` — handles submit/poll/bill lifecycle
+- Key methods: `ValidateRequestAndSetAction`, `BuildRequestURL`, `BuildRequestBody`, `DoRequest`, `DoResponse`, `FetchTask`, `ParseTaskResult`
+- Billing hooks: `EstimateBilling` (pre-charge), `AdjustBillingOnSubmit`, `AdjustBillingOnComplete` (settlement)
+- Task providers: `relay/channel/task/` (ali, doubao, gemini, hailuo, jimeng, kling, sora, suno)
 
 **Database Cross-Compatibility:**
 - `model/main.go` contains DB-agnostic column quoting (`commonGroupCol`, `commonKeyCol`)
@@ -93,6 +114,11 @@ web/           — React frontend
 **Request DTOs for Relay:**
 - Located in `dto/` directory
 - Must use pointer types for optional scalars (Rule 6)
+
+**Frontend Embedding:**
+- Go binary embeds the React frontend via `//go:embed web/dist` in `main.go`
+- Production build: build frontend first (`cd web && bun run build`), then build Go binary
+- Development: run frontend dev server (`bun run dev` proxies to Go backend on :3000) separately from `go run main.go`
 
 ## Internationalization (i18n)
 
@@ -164,6 +190,7 @@ To add a new AI provider channel:
 3. Register adaptor in `relay/relay_adaptor.go` `GetAdaptor()` switch
 4. Add API type constant in `constant/api_type.go` if needed
 5. Update routing in `router/relay-router.go` if new endpoint paths needed
+6. Check whether the provider supports `StreamOptions` — if so, add the channel type to `streamSupportedChannels` in `relay/common/relay_info.go`
 
 ### Rule 5: Protected Project Information — DO NOT Modify or Delete
 
