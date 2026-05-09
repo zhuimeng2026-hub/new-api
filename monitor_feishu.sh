@@ -77,7 +77,7 @@ FEISHU_RECEIVE_TYPE="${FEISHU_RECEIVE_TYPE:-chat_id}"  # chat_id 或 open_id
 if [ -f "$SCRIPT_DIR/.env" ]; then
     API_URL=$(grep "^new_api_url=" "$SCRIPT_DIR/.env" | cut -d'=' -f2- | tr -d '\r' | sed 's/^"//;s/"$//')
     ADMIN_KEY=$(grep "^new_admin_key=" "$SCRIPT_DIR/.env" | cut -d'=' -f2- | tr -d '\r' | sed 's/^"//;s/"$//')
-    API_USER=$(grep "^New-Api-User=" "$SCRIPT_DIR/.env" | cut -d'=' -f2- | tr -d '\r')
+    API_USER=$(grep "^New-Api-User=" "$SCRIPT_DIR/.env" | head -1 | cut -d'=' -f2- | tr -d '\r')
 fi
 API_URL="${API_URL:-https://aikey.aixifs.com}"
 API_URL="${API_URL%/}"
