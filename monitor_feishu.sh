@@ -11,6 +11,11 @@
 # 用法:
 #   ./monitor_feishu.sh           # 单次检查
 #   ./monitor_feishu.sh --cron    # cron 模式 (静默, 仅异常时通知)
+#
+# 告警冷却:
+#   服务不可达: 20分钟
+#   错误日志:   15分钟
+#   额度异常:   30分钟
 # ============================================================
 
 set -euo pipefail
@@ -26,6 +31,39 @@ alert_log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ${title}" >> "$ALERT_LOG"
     echo "${content}" >> "$ALERT_LOG"
     echo "---" >> "$ALERT_LOG"
+}
+
+# ---- 状态文件读写 ----
+read_state() {
+    local key="$1"
+    [ -f "$STATE_FILE" ] || return 1
+    grep "^${key}=" "$STATE_FILE" 2>/dev/null | tail -1 | cut -d'=' -f2-
+}
+
+write_state() {
+    local key="$1" value="$2"
+    local tmp="${STATE_FILE}.tmp"
+    if [ -f "$STATE_FILE" ]; then
+        grep -v "^${key}=" "$STATE_FILE" > "$tmp" 2>/dev/null || true
+    else
+        > "$tmp"
+    fi
+    echo "${key}=${value}" >> "$tmp"
+    mv "$tmp" "$STATE_FILE"
+}
+
+# ---- 告警去重 (冷却期内不重复发送) ----
+should_send() {
+    local alert_key="$1" cooldown="$2"
+    local last_sent
+    last_sent=$(read_state "last_alert_${alert_key}" 2>/dev/null || echo "")
+    local now
+    now=$(date +%s)
+    if [ -n "$last_sent" ] && [ "$((now - last_sent))" -lt "$cooldown" ]; then
+        return 1
+    fi
+    write_state "last_alert_${alert_key}" "$now"
+    return 0
 }
 
 # ---- 飞书配置 ----
@@ -56,8 +94,10 @@ CRON_MODE=false
 feishu_get_token() {
     # 缓存 token (有效期 2 小时)
     if [ -f "$TOKEN_FILE" ]; then
-        local cached_ts=$(jq -r '.ts // 0' "$TOKEN_FILE" 2>/dev/null || echo 0)
-        local now_ts=$(date +%s)
+        local cached_ts
+        cached_ts=$(jq -r '.ts // 0' "$TOKEN_FILE" 2>/dev/null || echo 0)
+        local now_ts
+        now_ts=$(date +%s)
         if [ $((now_ts - cached_ts)) -lt 7100 ]; then
             jq -r '.token' "$TOKEN_FILE"
             return
@@ -152,46 +192,56 @@ check_service_alive() {
     body=$(echo "$resp" | sed '$d')
 
     if [ "$http_code" != "200" ]; then
-        alert_log "服务不可达" "HTTP状态码: ${http_code}\n地址: ${API_URL}/api/status"
-        feishu_send "服务不可达" "**HTTP 状态码**: ${http_code}\n**地址**: ${API_URL}/api/status"
+        local msg="HTTP状态码: ${http_code}\n地址: ${API_URL}/api/status"
+        alert_log "服务不可达" "$msg"
+        if should_send "down" 1200; then
+            feishu_send "服务不可达" "**${msg}**"
+        else
+            $CRON_MODE || echo "  [冷却中] 服务不可达告警已跳过"
+        fi
         return 1
     fi
 
     local success
     success=$(echo "$body" | jq -r '.success // false')
     if [ "$success" != "true" ]; then
-        local msg=$(echo "$body" | jq -r '.message // "unknown"')
-        alert_log "服务异常" "${msg}"
-        feishu_send "服务异常" "${msg}"
+        local err_msg
+        err_msg=$(echo "$body" | jq -r '.message // "unknown"')
+        alert_log "服务异常" "${err_msg}"
+        if should_send "down" 1200; then
+            feishu_send "服务异常" "${err_msg}"
+        else
+            $CRON_MODE || echo "  [冷却中] 服务异常告警已跳过"
+        fi
         return 1
     fi
     $CRON_MODE || echo "  OK"
     return 0
 }
 
-# ---- 检查 2: 错误日志 ----
-check_error_logs() {
-    $CRON_MODE || echo "[检查2] 错误日志 (最近5分钟)..."
+# ---- 检查 2: 错误日志 + 渠道报错 (合并) ----
+check_errors_combined() {
+    $CRON_MODE || echo "[检查2] 错误日志+渠道分析..."
 
     local now_ts end_ts start_ts
     now_ts=$(date +%s)
     end_ts=$now_ts
     start_ts=$((end_ts - 300))
 
-    local last_ts=$start_ts
-    if [ -f "$STATE_FILE" ]; then
-        last_ts=$(grep "^last_ts=" "$STATE_FILE" 2>/dev/null | cut -d'=' -f2 || echo "$start_ts")
-    fi
+    local last_ts
+    last_ts=$(read_state "last_ts" 2>/dev/null || echo "$start_ts")
+    write_state "last_ts" "$end_ts"
 
     local resp http_code body
-    resp=$(api_call "/log/?type=5&start_timestamp=${last_ts}&end_timestamp=${end_ts}&page=0&page_size=50")
+    resp=$(api_call "/log/?type=5&start_timestamp=${last_ts}&end_timestamp=${end_ts}&page=0&page_size=200")
     http_code=$(echo "$resp" | tail -1)
     body=$(echo "$resp" | sed '$d')
 
-    echo "last_ts=$end_ts" > "$STATE_FILE"
-
     if [ "$http_code" != "200" ]; then
-        feishu_send "错误日志 API 异常" "**HTTP 状态码**: ${http_code}\n**地址**: /api/log?type=5"
+        alert_log "错误日志API异常" "HTTP: ${http_code}"
+        if should_send "error" 900; then
+            feishu_send "错误日志 API 异常" "**HTTP 状态码**: ${http_code}\n**地址**: /api/log?type=5"
+        fi
         return 1
     fi
 
@@ -204,72 +254,50 @@ check_error_logs() {
     local total
     total=$(echo "$body" | jq -r '.data.total // 0')
     if [ "$total" -eq 0 ]; then
-        $CRON_MODE || echo "  无错误日志"
+        $CRON_MODE || echo "  无错误"
         return 0
     fi
 
-    local items
-    items=$(echo "$body" | jq -r '.data.items[:10][] | "- [\(.channel_name // "system")] \(.model_name // "") → \(.content[:100])"' 2>/dev/null || echo "")
+    # 构建合并消息: 错误摘要 + 渠道归类
     local t1 t2
     t1=$(date -d "@${last_ts}" '+%H:%M:%S' 2>/dev/null || date '+%H:%M:%S')
     t2=$(date '+%H:%M:%S')
 
-    local content="**时间**: ${t1} ~ ${t2}\n"
-    content+="${items}\n\n**共 ${total} 条错误**"
+    local content
+    content="**时间**: ${t1} ~ ${t2}  |  **共 ${total} 条**\n\n"
 
-    alert_log "发现 ${total} 条错误日志" "$content"
-    feishu_send "发现 ${total} 条错误日志" "$content"
+    # 错误摘要 (前8条)
+    local items
+    items=$(echo "$body" | jq -r '.data.items[:8][] | "- [\(.channel_name // "system")] \(.model_name // "") → \(.content[:80])"' 2>/dev/null || echo "")
+    if [ -n "$items" ]; then
+        content+="**错误详情:**\n${items}\n"
+    fi
+
+    # 渠道归类
+    local channel_summary
+    channel_summary=$(echo "$body" | jq -r '[.data.items[] | select(.channel != 0 and .channel_name != "")] | group_by(.channel_name) | .[] | "> **\(.[0].channel_name)**: \(length)次 | \([.[].model_name] | unique | join(", "))"' 2>/dev/null || echo "")
+
+    if [ -n "$channel_summary" ]; then
+        content+="\n**按渠道:**\n${channel_summary}"
+    fi
+
+    alert_log "发现 ${total} 条错误" "$content"
+    if should_send "error" 900; then
+        feishu_send "发现 ${total} 条错误" "$content"
+    else
+        $CRON_MODE || echo "  [冷却中] 错误告警已跳过"
+    fi
     return 1
 }
 
-# ---- 检查 3: 渠道报错 ----
-check_channel_errors() {
-    $CRON_MODE || echo "[检查3] 渠道报错分析..."
-
-    local now_ts end_ts start_ts
-    now_ts=$(date +%s)
-    end_ts=$now_ts
-    start_ts=$((end_ts - 300))
-
-    local resp http_code body
-    resp=$(api_call "/log/?type=5&start_timestamp=${start_ts}&end_timestamp=${end_ts}&page=0&page_size=200")
-    http_code=$(echo "$resp" | tail -1)
-    body=$(echo "$resp" | sed '$d')
-
-    if [ "$http_code" != "200" ]; then
-        feishu_send "渠道报错 API 异常" "**HTTP 状态码**: ${http_code}\n**地址**: /api/log?type=5"
-        return 1
-    fi
-
-    local success
-    success=$(echo "$body" | jq -r '.success // false')
-    if [ "$success" != "true" ]; then
-        return 0
-    fi
-
-    local total
-    total=$(echo "$body" | jq -r '.data.total // 0')
-    if [ "$total" -eq 0 ]; then
-        $CRON_MODE || echo "  渠道无报错"
-        return 0
-    fi
-
-    # 按渠道归类
-    local channel_summary
-    channel_summary=$(echo "$body" | jq -r '[.data.items[] | select(.channel != 0 and .channel_name != "")] | group_by(.channel_name) | .[] | "**\(.[0].channel_name)**: \(length)次 | \(([.[].model_name] | unique | join(", ")))"' 2>/dev/null || echo "")
-
-    if [ -n "$channel_summary" ]; then
-        local content="${channel_summary}\n\n**共 ${total} 条渠道错误**"
-        alert_log "渠道报错汇总" "$content"
-        feishu_send "渠道报错汇总" "$content"
-        return 1
-    fi
-    return 0
-}
-
-# ---- 检查 4: 额度异常 ----
+# ---- 检查 3: 额度异常 ----
 check_quota_anomaly() {
-    $CRON_MODE || echo "[检查4] 额度消耗..."
+    $CRON_MODE || echo "[检查3] 额度消耗..."
+
+    if [ "${QUOTA_THRESHOLD:-0}" -le 0 ]; then
+        $CRON_MODE || echo "  未设置阈值, 跳过"
+        return 0
+    fi
 
     local now_ts end_ts start_ts
     now_ts=$(date +%s)
@@ -282,7 +310,7 @@ check_quota_anomaly() {
     body=$(echo "$resp" | sed '$d')
 
     if [ "$http_code" != "200" ]; then
-        feishu_send "额度统计 API 异常" "**HTTP 状态码**: ${http_code}\n**地址**: /api/log/stat?type=2"
+        alert_log "额度统计API异常" "HTTP: ${http_code}"
         return 1
     fi
 
@@ -297,21 +325,22 @@ check_quota_anomaly() {
     rpm=$(echo "$body" | jq -r '.data.rpm // 0')
     tpm=$(echo "$body" | jq -r '.data.tpm // 0')
 
-    local prev_quota=0
-    if [ -f "$STATE_FILE" ]; then
-        prev_quota=$(grep "^prev_quota=" "$STATE_FILE" 2>/dev/null | cut -d'=' -f2 || echo 0)
-    fi
-
-    echo "prev_quota=$quota" >> "$STATE_FILE"
-    echo "prev_rpm=$rpm" >> "$STATE_FILE"
-    echo "prev_tpm=$tpm" >> "$STATE_FILE"
+    local prev_quota
+    prev_quota=$(read_state "prev_quota" 2>/dev/null || echo "0")
+    write_state "prev_quota" "$quota"
 
     local quota_diff=$((quota - prev_quota))
-    $CRON_MODE || echo "  5分钟消耗: quota=${quota}, rpm=${rpm}, tpm=${tpm}"
+    $CRON_MODE || echo "  5分钟消耗: quota=${quota_diff}, rpm=${rpm}, tpm=${tpm}"
 
-    if [ "${QUOTA_THRESHOLD:-0}" -gt 0 ] && [ "$quota_diff" -gt "$QUOTA_THRESHOLD" ]; then
-        alert_log "额度消耗异常" "5分钟内消耗: ${quota_diff} (阈值: ${QUOTA_THRESHOLD})\nRPM: ${rpm} | TPM: ${tpm}"
-        feishu_send "额度消耗异常" "**5分钟内消耗**: ${quota_diff} (阈值: ${QUOTA_THRESHOLD})\n**RPM**: ${rpm} | **TPM**: ${tpm}"
+    if [ "$quota_diff" -gt "$QUOTA_THRESHOLD" ]; then
+        local content
+        content="**5分钟内消耗**: ${quota_diff} (阈值: ${QUOTA_THRESHOLD})\n**RPM**: ${rpm} | **TPM**: ${tpm}"
+        alert_log "额度消耗异常" "$content"
+        if should_send "quota" 1800; then
+            feishu_send "额度消耗异常" "$content"
+        else
+            $CRON_MODE || echo "  [冷却中] 额度异常告警已跳过"
+        fi
         return 1
     fi
     return 0
@@ -330,8 +359,7 @@ main() {
 
     check_service_alive || ((errors++))
     if [ "$errors" -eq 0 ]; then
-        check_error_logs || ((errors++))
-        check_channel_errors || ((errors++))
+        check_errors_combined || ((errors++))
         check_quota_anomaly || ((errors++))
     fi
 
