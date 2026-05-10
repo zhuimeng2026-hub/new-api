@@ -15,8 +15,8 @@ Go module: `github.com/zhuimeng2026-hub/new-api`
 # Run in development mode
 go run main.go
 
-# Build for current platform
-go build -ldflags "-s -w -X 'main.Version=$(git describe --tags)' -extldflags '-static'" -o new-api
+# Build for current platform (ensure VERSION file is populated first, e.g. echo "v1.0.0" > VERSION)
+GOEXPERIMENT=greenteagc go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)' -extldflags '-static'" -o new-api
 
 # Run all tests (uses SQLite in-memory by default)
 go test ./...
@@ -39,9 +39,10 @@ bun run lint / bun run lint:fix   # Prettier formatting
 bun run eslint / bun run eslint:fix  # ESLint checks
 ```
 
-### Full Build (makefile)
+### Full Build (manual)
 ```bash
-make all    # Builds frontend (bun) then starts backend (go run)
+cd web && bun install && bun run build && cd ..
+GOEXPERIMENT=greenteagc go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)' -extldflags '-static'" -o new-api
 ```
 
 ### Docker
@@ -54,7 +55,7 @@ docker-compose up -d    # Start with PostgreSQL + Redis
 
 ## Tech Stack
 
-- **Backend**: Go 1.22+ (go.mod specifies 1.25.1), Gin web framework, GORM v2 ORM
+- **Backend**: Go 1.22+ (go.mod specifies 1.25.1, Dockerfile uses 1.26.1), Gin web framework, GORM v2 ORM. Build requires `GOEXPERIMENT=greenteagc`.
 - **Frontend**: React 18, Vite, Semi Design UI (@douyinfe/semi-ui)
 - **Databases**: SQLite, MySQL, PostgreSQL (all three must be supported)
 - **Cache**: Redis (go-redis) + in-memory cache
@@ -104,7 +105,7 @@ web/           — React frontend
 - `channel.TaskAdaptor` interface in `relay/channel/adapter.go` — handles submit/poll/bill lifecycle
 - Key methods: `ValidateRequestAndSetAction`, `BuildRequestURL`, `BuildRequestBody`, `DoRequest`, `DoResponse`, `FetchTask`, `ParseTaskResult`
 - Billing hooks: `EstimateBilling` (pre-charge), `AdjustBillingOnSubmit`, `AdjustBillingOnComplete` (settlement)
-- Task providers: `relay/channel/task/` (ali, doubao, gemini, hailuo, jimeng, kling, sora, suno)
+- Task providers: `relay/channel/task/` (ali, doubao, gemini, hailuo, jimeng, kling, sora, suno, vertex, vidu)
 
 **Database Cross-Compatibility:**
 - `model/main.go` contains DB-agnostic column quoting (`commonGroupCol`, `commonKeyCol`)
@@ -124,7 +125,7 @@ web/           — React frontend
 
 ### Backend (`i18n/`)
 - Library: `nicksnyder/go-i18n/v2`
-- Languages: en, zh
+- Languages: en, zh-CN, zh-TW
 
 ### Frontend (`web/src/i18n/`)
 - Library: `i18next` + `react-i18next` + `i18next-browser-languagedetector`
