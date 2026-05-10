@@ -44,6 +44,7 @@ import (
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/vertex"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/volcengine"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/xai"
+	"github.com/zhuimeng2026-hub/new-api/relay/channel/xiaomimimo"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/xunfei"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/zhipu"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/zhipu_4v"
@@ -120,6 +121,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &replicate.Adaptor{}
 	case constant.APITypeCodex:
 		return &codex.Adaptor{}
+	case constant.APITypeXiaomiMiMo:
+		return &xiaomimimo.Adaptor{}
 	}
 	return nil
 }
