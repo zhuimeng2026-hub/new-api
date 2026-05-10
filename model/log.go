@@ -156,13 +156,6 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -179,12 +172,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,
 		Group:            params.Group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
+		Ip:               c.ClientIP(),
 		RequestId: requestId,
 		Other:     otherStr,
 	}
