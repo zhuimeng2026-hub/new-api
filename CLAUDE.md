@@ -53,6 +53,30 @@ docker-compose up -d    # Start with PostgreSQL + Redis
 ### Default Credentials
 - First run creates root user: username `root`, password `123456`
 
+### Test Setup Pattern
+
+Package-level tests use `TestMain` to set up an isolated SQLite in-memory database:
+
+```go
+func TestMain(m *testing.M) {
+    db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+    model.DB = db
+    model.LOG_DB = db
+    common.UsingSQLite = true
+    common.RedisEnabled = false
+    common.BatchUpdateEnabled = false
+    common.LogConsumeEnabled = true
+    db.AutoMigrate(&model.Task{}, /* ...relevant models... */)
+    os.Exit(m.Run())
+}
+```
+
+Key points:
+- SQLite driver: `github.com/glebarez/sqlite` (not the CGo `mattn/go-sqlite3`)
+- Set `common.UsingSQLite = true` so DB-agnostic code picks the correct SQL dialect
+- Migrate only the models the test needs — full schema migration is not required
+- Tests run with `go test ./...` without any special environment variables
+
 ## Tech Stack
 
 - **Backend**: Go 1.22+ (go.mod specifies 1.25.1, Dockerfile uses 1.26.1), Gin web framework, GORM v2 ORM. Build requires `GOEXPERIMENT=greenteagc`.
@@ -100,6 +124,7 @@ web/           — React frontend
 - Channel types defined in `constant/channel.go`
 - Request flow: Router → relay handler files (`relay/*_handler.go`) → adaptor → upstream API
 - Each relay mode has its own handler: `chat` (compatible_handler.go), `claude`, `gemini`, `audio`, `image`, `embedding`, `rerank`, `responses`, `mjproxy`
+- `relay/common_handler/` — shared handler logic used by multiple relay modes
 
 **Task Adaptor Pattern (async tasks like video/image generation):**
 - `channel.TaskAdaptor` interface in `relay/channel/adapter.go` — handles submit/poll/bill lifecycle
