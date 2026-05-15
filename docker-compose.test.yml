@@ -1,0 +1,49 @@
+version: '3.4'
+
+services:
+  new-api-test:
+    image: new-api:local
+    container_name: new-api-test
+    restart: "no"
+    command: --log-dir /app/logs
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./data-test:/data
+      - ./logs-test:/app/logs
+    environment:
+      - SQL_DSN=postgresql://root:123456@new-api-pg:5432/new-api
+      - REDIS_CONN_STRING=redis://new-api-redis
+      - TZ=Asia/Shanghai
+    depends_on:
+      - new-api-redis
+      - new-api-pg
+    networks:
+      - new-api-test-net
+
+  new-api-redis:
+    image: redis:7-alpine
+    container_name: new-api-redis
+    restart: "no"
+    networks:
+      - new-api-test-net
+
+  new-api-pg:
+    image: postgres:15-alpine
+    container_name: new-api-pg
+    restart: "no"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: new-api
+    volumes:
+      - pg_test_data:/var/lib/postgresql/data
+    networks:
+      - new-api-test-net
+
+volumes:
+  pg_test_data:
+
+networks:
+  new-api-test-net:
+    driver: bridge

@@ -1,0 +1,178 @@
+{
+  "channels": [
+    {
+      "type": 35,
+      "name": "MiniMax",
+      "key": "sk-cp-YK8A3UANwhcJ0NObAk1m0sGDiwKVph17DWeqdYSIJUnCVnMb6rXRXHuCI4PtWhr5lAjdtMmuiGgh0BiH2AhPc6OELGvIp-tDhXS-sUGYMGwHam8E753-z0c",
+      "models": "MiniMax-Text-01,MiniMax-M1,abab6.5s-chat,abab6.5-chat,abab7-chat-preview",
+      "base_url": "",
+      "group": "default",
+      "priority": 0,
+      "weight": 0,
+      "status": 2,
+      "model_mapping": {}
+    },
+    {
+      "type": 14,
+      "name": "智谱GLM-5(Anthropic)",
+      "key": "6219676c932e49afaaefab73c354d325.Jq9Roo03IrzbKyOt",
+      "models": "glm-4.7,glm-5,glm-5-turbo,glm-5.1,claude-opus-4,claude-opus-4-7,claude-sonnet-4-6",
+      "base_url": "https://open.bigmodel.cn/api/anthropic",
+      "group": "default",
+      "priority": 0,
+      "weight": 0,
+      "status": 2,
+      "model_mapping": {
+        "claude-3-5-sonnet-20241022": "glm-5-turbo",
+        "claude-3-opus-20240229": "glm-5",
+        "claude-opus-4-20250514": "glm-5.1",
+        "claude-opus-4": "glm-5.1",
+        "claude-opus-4-7": "glm-5.1",
+        "claude-sonnet-4-6": "glm-5-turbo"
+      }
+    },
+    {
+      "type": 1,
+      "name": "火山引擎(Coding)",
+      "key": "b2d2a3a6-32a2-45a8-a4aa-22b36877cbad",
+      "models": "glm-5.1,glm-4.7",
+      "base_url": "https://ark.cn-beijing.volces.com/api/coding",
+      "group": "default",
+      "priority": 300,
+      "weight": 100,
+      "status": 2
+    },
+    {
+      "type": 1,
+      "name": "ModelScope-文生图",
+      "key": "ms-a9298ad2-b01a-428b-81dd-0f97051c2b33",
+      "models": "Qwen/Qwen-Image",
+      "base_url": "https://api-inference.modelscope.cn",
+      "group": "default",
+      "priority": 0,
+      "weight": 1,
+      "status": 1
+    },
+    {
+      "type": 26,
+      "name": "智谱BigModel",
+      "key": "6219676c932e49afaaefab73c354d325.Jq9Roo03IrzbKyOt",
+      "models": "glm-4-flash,glm-4,glm-4-plus,glm-4-air,glm-4-airx,glm-4-long,glm-4v,glm-4v-plus,glm-4.5,glm-4.5-air,glm-4.6,glm-4.6v,glm-4.7,glm-4.7-flash,glm-4-alltools,glm-3-turbo,glm-4-0520",
+      "base_url": "https://open.bigmodel.cn",
+      "group": "default",
+      "priority": 0,
+      "weight": 0,
+      "status": 0,
+      "model_mapping": {
+        "gpt-4": "glm-4",
+        "gpt-4-turbo": "glm-4-plus",
+        "gpt-3.5-turbo": "glm-4-flash",
+        "claude-3-5-sonnet-20241022": "glm-4.7",
+        "claude-3-5-haiku-20241022": "glm-4.7-flash"
+      }
+    },
+    {
+      "type": 25,
+      "name": "小米MiMo-备用",
+      "key": "sk-co9ij893u4a07nm3fc4f2aj4921djy1omk9p18d3cu38qokr",
+      "models": "deepseek-v4-pro,mimo-v2.5-pro,mimo-v2.5,mimo-v2-pro,mimo-v2-omni,mimo-v2-flash,mimo-v2-tts,mimo-v2.5-tts,mimo-v2.5-tts-voiceclone,mimo-v2.5-tts-voicedesign",
+      "base_url": "https://api.xiaomimimo.com",
+      "group": "default",
+      "priority": 500,
+      "weight": 0,
+      "status": 1,
+      "model_mapping": {
+        "deepseek-v4-pro": "mimo-v2.5-pro"
+      }
+    },
+    {
+      "type": 14,
+      "name": "智谱GLM(Coding)",
+      "key": "6219676c932e49afaaefab73c354d325.Jq9Roo03IrzbKyOt",
+      "models": "glm-4-plus,glm-4-0520,glm-4,glm-4-air,glm-4-airx,glm-4-long,glm-4-flash,glm-4-flashx,glm-4v,glm-4v-plus",
+      "base_url": "https://open.bigmodel.cn/api/anthropic",
+      "group": "default",
+      "priority": 0,
+      "weight": 0,
+      "status": 1
+    },
+    {
+      "type": 43,
+      "name": "DeepSeek",
+      "key": "sk-92ba7f9ed92a4eb99f5f3611aa428b5f",
+      "models": "deepseek-chat,deepseek-reasoner,deepseek-v4-pro,deepseek-v4-flash,ZhipuAI/GLM-5.1,ZhipuAI/GLM-4.7-Flash",
+      "base_url": "https://api.deepseek.com",
+      "group": "default",
+      "priority": 999,
+      "weight": 0,
+      "status": 1,
+      "model_mapping": {
+        "ZhipuAI/GLM-5.1": "deepseek-v4-flash",
+        "ZhipuAI/GLM-4.7-Flash": "deepseek-v4-flash"
+      }
+    },
+    {
+      "type": 1,
+      "name": "SCNET-ALL",
+      "key": "sk-sp-ODQwLTExMzU4MTM4MTAzLTE3Nzc0NDAzODAzOTE=",
+      "models": "DeepSeek-R1-Distill-Qwen-32B,Qwen3-30B-A3B,Kimi-K2.6,DeepSeek-R1-0528,DeepSeek-V4-Pro,DeepSeek-R1-Distill-Qwen-7B,Qwen3-235B-A22B-Thinking-2507,QwQ-32B,Qwen3.6-Max,Qwen3.6-Flash,DeepSeek-R1-Distill-Llama-70B,Qwen3.6-Plus,Qwen3-Embedding-8B,DeepSeek-V3.2,Qwen3-30B-A3B-Instruct-2507,Qwen3-235B-A22B,DeepSeek-V4-Flash,MiniMax-M2.5,GLM-5.1",
+      "base_url": "https://api.scnet.cn/api/llm/v1",
+      "group": "default",
+      "priority": 0,
+      "weight": 100,
+      "status": 2
+    },
+    {
+      "type": 1,
+      "name": "ModelScope",
+      "key": "ms-a9298ad2-b01a-428b-81dd-0f97051c2b33",
+      "models": "deepseek-ai/DeepSeek-V3.2,deepseek-ai/DeepSeek-V4-Flash,Qwen/Qwen3-8B,Qwen/Qwen3-14B,Qwen/Qwen3-32B,Qwen/Qwen3-235B-A22B,Qwen/Qwen3-Coder-30B-A3B-Instruct,MiniMax/MiniMax-M2.5",
+      "base_url": "https://api-inference.modelscope.cn",
+      "group": "default",
+      "priority": 1000,
+      "weight": 100,
+      "status": 1
+    },
+    {
+      "type": 35,
+      "name": "SCNET-Coding",
+      "key": "sk-sp-ODQwLTExMzU4MTM4MTAzLTE3Nzc0NDAzODM5MTE=",
+      "models": "MiniMax-M2.5",
+      "base_url": "https://api.scnet.cn/api/llm/v1",
+      "group": "default",
+      "priority": 200,
+      "weight": 0,
+      "status": 1
+    },
+    {
+      "type": 17,
+      "name": "通义千问(Qwen)",
+      "key": "sk-2b32b28b3f0b47eabb38a5efde7c5a56",
+      "models": "qwen3.6-max-preview,qwen-turbo,qwen-plus,qwen-max,qwen-long,qwen-vl-plus,qwen-vl-max,qwen2.5-72b-instruct,qwen2.5-32b-instruct,qwen2.5-14b-instruct,qwen2.5-7b-instruct,qwen3-235b-a22b,qwen3-32b,qwen3-30b-a22b,qwen-coder-plus,qwen-coder-turbo,qwen-math-plus,qwen-math-turbo,qwen-image-2.0-pro,gpt-image-1.5,wanx2.0-t2i-turbo,wan2.6-i2v-flash,wan2.6-i2v,wan2.6-t2v,wan2.7-i2v,wan2.7-t2v",
+      "base_url": "",
+      "group": "default",
+      "priority": 0,
+      "weight": 0,
+      "status": 1,
+      "model_mapping": {
+        "gpt-4": "qwen-max",
+        "gpt-4-turbo": "qwen-plus",
+        "gpt-3.5-turbo": "qwen-turbo"
+      }
+    },
+    {
+      "type": 58,
+      "name": "小米MiMo",
+      "key": "sk-ckdg3376lvuy5h65d4a2ld4k33b5gqmm2s8n79izsdizruku",
+      "models": "deepseek-v4-pro,mimo-v2.5-pro,mimo-v2.5,mimo-v2-pro,mimo-v2-omni,mimo-v2-flash,mimo-v2-tts,mimo-v2.5-tts,mimo-v2.5-tts-voiceclone,mimo-v2.5-tts-voicedesign",
+      "base_url": "https://api.xiaomimimo.com",
+      "group": "default",
+      "priority": 600,
+      "weight": 0,
+      "status": 1,
+      "model_mapping": {
+        "deepseek-v4-pro": "mimo-v2.5-pro"
+      }
+    }
+  ]
+}
