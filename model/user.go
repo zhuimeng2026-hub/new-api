@@ -690,9 +690,9 @@ func GetOrCreateUserByOpenId(openid string, affCode string) (*User, error) {
 		return nil, err
 	}
 	// Create new user
-	usernameBase := "oversea_" + openid
+	usernameBase := openid
 	if len(usernameBase) > UserNameMaxLength {
-		usernameBase = usernameBase[:UserNameMaxLength]
+		usernameBase = usernameBase[len(usernameBase)-UserNameMaxLength:]
 	}
 	var inviterId int
 	if affCode != "" {
