@@ -439,6 +439,7 @@ const renderOperations = (
 
 export const getTokensColumns = ({
   t,
+  isAdminUser,
   showKeys,
   resolvedTokenKeys,
   loadingTokenKeys,
@@ -451,6 +452,16 @@ export const getTokensColumns = ({
   refresh,
 }) => {
   return [
+    ...(isAdminUser
+      ? [
+          {
+            title: t('用户'),
+            dataIndex: 'username',
+            key: 'username',
+            width: 140,
+          },
+        ]
+      : []),
     {
       title: t('名称'),
       dataIndex: 'name',

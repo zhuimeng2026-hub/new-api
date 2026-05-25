@@ -34,6 +34,7 @@ const TokensTable = (tokensData) => {
     pageSize,
     tokenCount,
     compactMode,
+    isAdminUser,
     handlePageChange,
     handlePageSizeChange,
     rowSelection,
@@ -55,6 +56,7 @@ const TokensTable = (tokensData) => {
   const columns = useMemo(() => {
     return getTokensColumns({
       t,
+      isAdminUser,
       showKeys,
       resolvedTokenKeys,
       loadingTokenKeys,
@@ -68,6 +70,7 @@ const TokensTable = (tokensData) => {
     });
   }, [
     t,
+    isAdminUser,
     showKeys,
     resolvedTokenKeys,
     loadingTokenKeys,

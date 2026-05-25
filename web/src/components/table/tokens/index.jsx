@@ -31,6 +31,7 @@ import {
   showError,
   getModelCategories,
   selectFilter,
+  isAdmin,
 } from '../../../helpers';
 import CardPro from '../../common/ui/CardPro';
 import TokensTable from './TokensTable';
@@ -434,7 +435,7 @@ function TokensPage() {
         })}
         t={tokensData.t}
       >
-        <TokensTable {...tokensData} />
+        <TokensTable {...tokensData} isAdminUser={isAdmin()} />
       </CardPro>
     </>
   );
