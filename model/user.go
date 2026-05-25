@@ -661,8 +661,7 @@ func (user *User) FillUserByWeChatId() error {
 	if user.WeChatId == "" {
 		return errors.New("WeChat id 为空！")
 	}
-	DB.Where(User{WeChatId: user.WeChatId}).First(user)
-	return nil
+	return DB.Where(User{WeChatId: user.WeChatId}).First(user).Error
 }
 
 func (user *User) FillUserByTelegramId() error {
