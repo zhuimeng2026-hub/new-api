@@ -187,6 +187,16 @@ func AddToken(c *gin.Context) {
 			return
 		}
 	}
+	// x-user-id: auto-create/bind user by openid (from keygen oversea-key)
+	if openid := c.GetHeader("x-user-id"); openid != "" {
+		affCode := c.GetHeader("x-aff-code")
+		user, err := model.GetOrCreateUserByOpenId(openid, affCode)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		c.Set("id", user.Id)
+	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
 	count, err := model.CountUserTokens(c.GetInt("id"))

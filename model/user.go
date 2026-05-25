@@ -676,6 +676,74 @@ func (user *User) FillUserByTelegramId() error {
 	return nil
 }
 
+// GetOrCreateUserByOpenId finds or creates a user by openid (stored in wechat_id).
+// If affCode is provided and valid, the new user is created with inviter relationship.
+func GetOrCreateUserByOpenId(openid string, affCode string) (*User, error) {
+	if openid == "" {
+		return nil, errors.New("openid 为空")
+	}
+	user := &User{WeChatId: openid}
+	err := user.FillUserByWeChatId()
+	if err == nil {
+		return user, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	// Create new user
+	usernameBase := "oversea_" + openid
+	if len(usernameBase) > UserNameMaxLength {
+		usernameBase = usernameBase[:UserNameMaxLength]
+	}
+	var inviterId int
+	if affCode != "" {
+		inviterId, _ = GetUserIdByAffCode(affCode)
+	}
+	maxQuota := int(1000000000 * common.QuotaPerUnit)
+	// Retry with random suffix on username conflict
+	var newUser *User
+	for attempt := 0; attempt < 5; attempt++ {
+		username := usernameBase
+		if attempt > 0 {
+			suffix := common.GetRandomString(4)
+			maxPrefix := UserNameMaxLength - len(suffix)
+			if len(usernameBase) > maxPrefix {
+				username = usernameBase[:maxPrefix] + suffix
+			} else {
+				username = usernameBase + suffix
+			}
+		}
+		candidate := &User{
+			Username: username,
+			WeChatId: openid,
+			Role:     common.RoleCommonUser,
+			Status:   common.UserStatusEnabled,
+			Password: common.GetRandomString(16),
+		}
+		err = candidate.Insert(inviterId)
+		if err == nil {
+			newUser = candidate
+			break
+		}
+		if !strings.Contains(err.Error(), "username") &&
+		   !strings.Contains(err.Error(), "UNIQUE") &&
+		   !strings.Contains(err.Error(), "unique") &&
+		   !strings.Contains(err.Error(), "Duplicate") {
+			return nil, err
+		}
+	}
+	if newUser == nil {
+		return nil, errors.New("创建用户失败：无法生成唯一用户名")
+	}
+	// Override QuotaForNewUser default — keygen users use token quota as the only limit
+	if err := DB.Model(newUser).Update("quota", maxQuota).Error; err != nil {
+		return nil, err
+	}
+	newUser.Quota = maxQuota
+	return newUser, nil
+}
+
+
 func IsEmailAlreadyTaken(email string) bool {
 	return DB.Unscoped().Where("email = ?", email).Find(&User{}).RowsAffected == 1
 }
