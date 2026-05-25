@@ -14,6 +14,7 @@ import (
 type Token struct {
 	Id                 int            `json:"id"`
 	UserId             int            `json:"user_id" gorm:"index"`
+	Username           string         `json:"username,omitempty" gorm:"-"`
 	Key                string         `json:"key" gorm:"type:char(48);uniqueIndex"`
 	Status             int            `json:"status" gorm:"default:1"`
 	Name               string         `json:"name" gorm:"index" `
@@ -82,6 +83,28 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
 	var err error
 	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	return tokens, err
+}
+
+func populateTokenUsernames(tokens []*Token) {
+	userIds := make([]int, 0, len(tokens))
+	for _, t := range tokens {
+		userIds = append(userIds, t.UserId)
+	}
+	usernameMap := GetUsernamesByIds(userIds)
+	for _, t := range tokens {
+		if name, ok := usernameMap[t.UserId]; ok {
+			t.Username = name
+		}
+	}
+}
+
+func GetAllTokens(startIdx int, num int) ([]*Token, error) {
+	var tokens []*Token
+	err := DB.Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	if err == nil {
+		populateTokenUsernames(tokens)
+	}
 	return tokens, err
 }
 
@@ -182,6 +205,49 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		common.SysError("failed to search tokens: " + err.Error())
 		return nil, 0, errors.New("搜索令牌失败")
 	}
+	return tokens, total, nil
+}
+
+func SearchAllTokens(keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+	if limit <= 0 || limit > searchHardLimit {
+		limit = searchHardLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if token != "" {
+		token = strings.TrimPrefix(token, "sk-")
+	}
+
+	baseQuery := DB.Model(&Token{})
+
+	if keyword != "" {
+		keywordPattern, err := sanitizeLikePattern(keyword)
+		if err != nil {
+			return nil, 0, err
+		}
+		baseQuery = baseQuery.Where("name LIKE ? ESCAPE '!'", keywordPattern)
+	}
+	if token != "" {
+		tokenPattern, err := sanitizeLikePattern(token)
+		if err != nil {
+			return nil, 0, err
+		}
+		baseQuery = baseQuery.Where(commonKeyCol+" LIKE ? ESCAPE '!'", tokenPattern)
+	}
+
+	err = baseQuery.Count(&total).Error
+	if err != nil {
+		common.SysError("failed to count search tokens: " + err.Error())
+		return nil, 0, errors.New("搜索令牌失败")
+	}
+
+	err = baseQuery.Order("id desc").Offset(offset).Limit(limit).Find(&tokens).Error
+	if err != nil {
+		common.SysError("failed to search tokens: " + err.Error())
+		return nil, 0, errors.New("搜索令牌失败")
+	}
+	populateTokenUsernames(tokens)
 	return tokens, total, nil
 }
 
@@ -381,6 +447,18 @@ func DeleteTokenById(id int, userId int) (err error) {
 	return token.Delete()
 }
 
+func DeleteTokenByIdAdmin(id int) (err error) {
+	if id == 0 {
+		return errors.New("id 为空！")
+	}
+	token := Token{Id: id}
+	err = DB.Where(&token).First(&token).Error
+	if err != nil {
+		return err
+	}
+	return token.Delete()
+}
+
 func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
@@ -448,6 +526,12 @@ func CountUserTokens(userId int) (int64, error) {
 	return total, err
 }
 
+func CountAllTokens() (int64, error) {
+	var total int64
+	err := DB.Model(&Token{}).Count(&total).Error
+	return total, err
+}
+
 // BatchDeleteTokens 删除指定用户的一组令牌，返回成功删除数量
 func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	if len(ids) == 0 {
@@ -463,6 +547,39 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	}
 
 	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return 0, err
+	}
+
+	if common.RedisEnabled {
+		gopool.Go(func() {
+			for _, t := range tokens {
+				_ = cacheDeleteToken(t.Key)
+			}
+		})
+	}
+
+	return len(tokens), nil
+}
+
+func BatchDeleteTokensAdmin(ids []int) (int, error) {
+	if len(ids) == 0 {
+		return 0, errors.New("ids 不能为空！")
+	}
+
+	tx := DB.Begin()
+
+	var tokens []Token
+	if err := tx.Where("id IN (?)", ids).Find(&tokens).Error; err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+
+	if err := tx.Where("id IN (?)", ids).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}

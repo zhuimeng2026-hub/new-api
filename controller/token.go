@@ -34,12 +34,20 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	var tokens []*model.Token
+	var total int64
+	var err error
+	if model.IsAdmin(userId) {
+		tokens, err = model.GetAllTokens(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		total, _ = model.CountAllTokens()
+	} else {
+		tokens, err = model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+		total, _ = model.CountUserTokens(userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
 	common.ApiSuccess(c, pageInfo)
@@ -52,7 +60,14 @@ func SearchTokens(c *gin.Context) {
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	var tokens []*model.Token
+	var total int64
+	var err error
+	if model.IsAdmin(userId) {
+		tokens, total, err = model.SearchAllTokens(keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	} else {
+		tokens, total, err = model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -69,7 +84,12 @@ func GetToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	var token *model.Token
+	if model.IsAdmin(userId) {
+		token, err = model.GetTokenById(id)
+	} else {
+		token, err = model.GetTokenByIds(id, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -84,7 +104,12 @@ func GetTokenKey(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	token, err := model.GetTokenByIds(id, userId)
+	var token *model.Token
+	if model.IsAdmin(userId) {
+		token, err = model.GetTokenById(id)
+	} else {
+		token, err = model.GetTokenByIds(id, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -97,7 +122,13 @@ func GetTokenKey(c *gin.Context) {
 func GetTokenStatus(c *gin.Context) {
 	tokenId := c.GetInt("token_id")
 	userId := c.GetInt("id")
-	token, err := model.GetTokenByIds(tokenId, userId)
+	var token *model.Token
+	var err error
+	if model.IsAdmin(userId) {
+		token, err = model.GetTokenById(tokenId)
+	} else {
+		token, err = model.GetTokenByIds(tokenId, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -249,7 +280,12 @@ func AddToken(c *gin.Context) {
 func DeleteToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	userId := c.GetInt("id")
-	err := model.DeleteTokenById(id, userId)
+	var err error
+	if model.IsAdmin(userId) {
+		err = model.DeleteTokenByIdAdmin(id)
+	} else {
+		err = model.DeleteTokenById(id, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -284,7 +320,12 @@ func UpdateToken(c *gin.Context) {
 			return
 		}
 	}
-	cleanToken, err := model.GetTokenByIds(token.Id, userId)
+	var cleanToken *model.Token
+	if model.IsAdmin(userId) {
+		cleanToken, err = model.GetTokenById(token.Id)
+	} else {
+		cleanToken, err = model.GetTokenByIds(token.Id, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -336,7 +377,13 @@ func DeleteTokenBatch(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
-	count, err := model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	var count int
+	var err error
+	if model.IsAdmin(userId) {
+		count, err = model.BatchDeleteTokensAdmin(tokenBatch.Ids)
+	} else {
+		count, err = model.BatchDeleteTokens(tokenBatch.Ids, userId)
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
