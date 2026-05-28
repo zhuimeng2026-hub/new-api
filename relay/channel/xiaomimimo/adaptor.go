@@ -48,7 +48,23 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	return request, nil
+	// Only pass through parameters supported by MiMo API.
+	// Unsupported fields (n, logprobs, seed, user, etc.) cause 400 "Param Incorrect".
+	return &dto.GeneralOpenAIRequest{
+		Model:               request.Model,
+		Messages:            request.Messages,
+		Stream:              request.Stream,
+		StreamOptions:       request.StreamOptions,
+		MaxCompletionTokens: request.MaxCompletionTokens,
+		Temperature:         request.Temperature,
+		TopP:                request.TopP,
+		Stop:                request.Stop,
+		FrequencyPenalty:    request.FrequencyPenalty,
+		PresencePenalty:     request.PresencePenalty,
+		ResponseFormat:      request.ResponseFormat,
+		Tools:               request.Tools,
+		ToolChoice:          request.ToolChoice,
+	}, nil
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, req *dto.ClaudeRequest) (any, error) {
