@@ -45,8 +45,10 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 				if visitedModels[mappedModel] {
 					if mappedModel == currentModel {
 						if currentModel == info.OriginModelName {
-							info.IsModelMapped = false
-							return nil
+							// 自映射：模型名映射到自身，仍然标记为已映射
+							// 以确保 UpstreamModelName 被正确设置，走正常的映射请求路径
+							info.IsModelMapped = true
+							break
 						} else {
 							info.IsModelMapped = true
 							break
