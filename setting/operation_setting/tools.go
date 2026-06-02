@@ -22,6 +22,45 @@ const (
 	GPTImage1High1536x1024   = 0.25
 )
 
+// gpt-image-2 upstream prices (USD) from kapon
+const (
+	GPTImage2Low1024x1024    = 0.006
+	GPTImage2Low1024x1536    = 0.005
+	GPTImage2Low1536x1024    = 0.005
+	GPTImage2Low1920x1080    = 0.010
+	GPTImage2Low1080x1920    = 0.010
+	GPTImage2Low2048x2048    = 0.011
+	GPTImage2Low2560x1440    = 0.010
+	GPTImage2Low1440x2560    = 0.010
+	GPTImage2Low3840x2160    = 0.020
+	GPTImage2Low2160x3840    = 0.020
+
+	GPTImage2Medium1024x1024 = 0.053
+	GPTImage2Medium1024x1536 = 0.041
+	GPTImage2Medium1536x1024 = 0.041
+	GPTImage2Medium1920x1080 = 0.040
+	GPTImage2Medium1080x1920 = 0.040
+	GPTImage2Medium2048x2048 = 0.060
+	GPTImage2Medium2560x1440 = 0.060
+	GPTImage2Medium1440x2560 = 0.060
+	GPTImage2Medium3840x2160 = 0.110
+	GPTImage2Medium2160x3840 = 0.110
+
+	GPTImage2High1024x1024   = 0.211
+	GPTImage2High1024x1536   = 0.165
+	GPTImage2High1536x1024   = 0.165
+	GPTImage2High1920x1080   = 0.160
+	GPTImage2High1080x1920   = 0.160
+	GPTImage2High2048x2048   = 0.220
+	GPTImage2High2560x1440   = 0.230
+	GPTImage2High1440x2560   = 0.230
+	GPTImage2High3840x2160   = 0.410
+	GPTImage2High2160x3840   = 0.410
+)
+
+// GPTImage2BasePrice is the reference price (low/1024x1024) used to compute ImagePriceRatio
+const GPTImage2BasePrice = GPTImage2Low1024x1024 // $0.006
+
 const (
 	// Gemini Audio Input Price
 	Gemini25FlashPreviewInputAudioPrice     = 1.00
@@ -107,4 +146,70 @@ func GetGPTImage1PriceOnceCall(quality string, size string) float64 {
 	}
 
 	return GPTImage1High1024x1024
+}
+
+func GetGPTImage2PriceOnceCall(quality, size string) float64 {
+	prices := map[string]map[string]float64{
+		"auto": {
+			"1024x1024": GPTImage2Medium1024x1024,
+			"1024x1536": GPTImage2Medium1024x1536,
+			"1536x1024": GPTImage2Medium1536x1024,
+			"1920x1080": GPTImage2Medium1920x1080,
+			"1080x1920": GPTImage2Medium1080x1920,
+			"2048x2048": GPTImage2Medium2048x2048,
+			"2560x1440": GPTImage2Medium2560x1440,
+			"1440x2560": GPTImage2Medium1440x2560,
+			"3840x2160": GPTImage2Medium3840x2160,
+			"2160x3840": GPTImage2Medium2160x3840,
+		},
+		"low": {
+			"1024x1024": GPTImage2Low1024x1024,
+			"1024x1536": GPTImage2Low1024x1536,
+			"1536x1024": GPTImage2Low1536x1024,
+			"1920x1080": GPTImage2Low1920x1080,
+			"1080x1920": GPTImage2Low1080x1920,
+			"2048x2048": GPTImage2Low2048x2048,
+			"2560x1440": GPTImage2Low2560x1440,
+			"1440x2560": GPTImage2Low1440x2560,
+			"3840x2160": GPTImage2Low3840x2160,
+			"2160x3840": GPTImage2Low2160x3840,
+		},
+		"medium": {
+			"1024x1024": GPTImage2Medium1024x1024,
+			"1024x1536": GPTImage2Medium1024x1536,
+			"1536x1024": GPTImage2Medium1536x1024,
+			"1920x1080": GPTImage2Medium1920x1080,
+			"1080x1920": GPTImage2Medium1080x1920,
+			"2048x2048": GPTImage2Medium2048x2048,
+			"2560x1440": GPTImage2Medium2560x1440,
+			"1440x2560": GPTImage2Medium1440x2560,
+			"3840x2160": GPTImage2Medium3840x2160,
+			"2160x3840": GPTImage2Medium2160x3840,
+		},
+		"high": {
+			"1024x1024": GPTImage2High1024x1024,
+			"1024x1536": GPTImage2High1024x1536,
+			"1536x1024": GPTImage2High1536x1024,
+			"1920x1080": GPTImage2High1920x1080,
+			"1080x1920": GPTImage2High1080x1920,
+			"2048x2048": GPTImage2High2048x2048,
+			"2560x1440": GPTImage2High2560x1440,
+			"1440x2560": GPTImage2High1440x2560,
+			"3840x2160": GPTImage2High3840x2160,
+			"2160x3840": GPTImage2High2160x3840,
+		},
+	}
+
+	if qualityMap, exists := prices[quality]; exists {
+		if price, exists := qualityMap[size]; exists {
+			return price
+		}
+	}
+
+	// fallback: high/1024x1024
+	return GPTImage2High1024x1024
+}
+
+func GetGPTImage2PriceRatio(quality, size string) float64 {
+	return GetGPTImage2PriceOnceCall(quality, size) / GPTImage2BasePrice
 }
