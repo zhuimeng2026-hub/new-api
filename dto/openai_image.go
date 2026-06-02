@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/zhuimeng2026-hub/new-api/common"
+	"github.com/zhuimeng2026-hub/new-api/setting/operation_setting"
 	"github.com/zhuimeng2026-hub/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -146,6 +147,19 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 				qualityRatio = 1.5
 			}
 		}
+	}
+
+	if strings.HasPrefix(i.Model, "gpt-image-2") {
+		quality := i.Quality
+		if quality == "" {
+			quality = "auto"
+		}
+		size := i.Size
+		if size == "" {
+			size = "1024x1024"
+		}
+		sizeRatio = operation_setting.GetGPTImage2PriceRatio(quality, size)
+		qualityRatio = 1.0
 	}
 
 	// not support token count for dalle
