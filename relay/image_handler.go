@@ -141,6 +141,17 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		logContent = append(logContent, fmt.Sprintf("生成数量 %d", imageN))
 	}
 
+	// 记录 image quality/size/ratio 到 context，供日志使用
+	if request.Size != "" {
+		c.Set("image_request_size", request.Size)
+	}
+	if request.Quality != "" {
+		c.Set("image_request_quality", request.Quality)
+	}
+	if meta := request.GetTokenCountMeta(); meta != nil && meta.ImagePriceRatio != 0 {
+		c.Set("image_price_ratio", meta.ImagePriceRatio)
+	}
+
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
 	return nil
 }
