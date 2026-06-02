@@ -41,6 +41,36 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
+/**
+ * Detect image model logs by checking model_name, content pattern, or
+ * request_conversion in the `other` JSON field.
+ */
+const isImageLog = (log) => {
+  if (log.model_name && /image/i.test(log.model_name)) return true;
+  if (log.content && /大小.*品质.*生成数量/.test(log.content)) return true;
+  try {
+    const other = JSON.parse(log.other || '{}');
+    if (other.request_conversion?.includes('openai_image')) return true;
+  } catch {}
+  return false;
+};
+
+/**
+ * Parse image-specific fields (size, quality, count) from the content string.
+ * Example content: "大小 1024x1024, 品质 standard, 生成数量 1"
+ */
+const parseImageContent = (content) => {
+  if (!content) return {};
+  const sizeMatch = content.match(/大小\s*(\d+x\d+)/);
+  const qualityMatch = content.match(/品质\s*(\w+)/);
+  const countMatch = content.match(/生成数量\s*(\d+)/);
+  return {
+    size: sizeMatch?.[1] || '-',
+    quality: qualityMatch?.[1] || '-',
+    count: countMatch?.[1] || '1',
+  };
+};
+
 export const useLogsData = () => {
   const { t } = useTranslation();
 
@@ -445,7 +475,41 @@ export const useLogsData = () => {
                   1.0,
                 billingDisplayMode,
               )
-            : renderLogContent(
+            : isImageLog(logs[i])
+              ? (() => {
+                  const isSuccess = logs[i].status === 1 || logs[i].status === 2 || logs[i].completion_tokens > 0;
+                  if (isSuccess) {
+                    const img = parseImageContent(logs[i].content);
+                    return (
+                      <div style={{ whiteSpace: 'pre-line', lineHeight: 1.8 }}>
+                        {`${t('尺寸')}：${img.size}`}
+                        {'\n'}{`${t('品质')}：${img.quality}`}
+                        {'\n'}{`${t('生成数量')}：${img.count}`}
+                        {'\n'}{`${t('请求路径')}：${other?.request_path || '-'}`}
+                        {'\n'}{`${t('计费方式')}：${(other?.request_conversion || []).join(' -> ') || t('原生格式')}`}
+                        {'\n'}{`${t('单价')}：${other?.model_price ?? '-'}`}
+                        {'\n'}{`${t('输入 Tokens')}：${logs[i].prompt_tokens ?? '-'}`}
+                        {'\n'}{`${t('输出 Tokens')}：${logs[i].completion_tokens ?? '-'}`}
+                        {'\n'}{`${t('耗时')}：${logs[i].use_time ?? '-'}s`}
+                      </div>
+                    );
+                  }
+                  let errOther = other;
+                  if (!errOther || Object.keys(errOther).length === 0) {
+                    try { errOther = JSON.parse(logs[i].other || '{}'); } catch { errOther = {}; }
+                  }
+                  return (
+                    <div style={{ whiteSpace: 'pre-line', lineHeight: 1.8 }}>
+                      {`${t('错误码')}：${errOther.status_code ?? '-'}`}
+                      {'\n'}{`${t('错误类型')}：${errOther.error_type ?? '-'}`}
+                      {'\n'}{`${t('错误代码')}：${errOther.error_code ?? '-'}`}
+                      {'\n'}{`${t('请求路径')}：${errOther.request_path ?? '-'}`}
+                      {'\n'}{`${t('错误详情')}：${logs[i].content || '-'}`}
+                      {'\n'}{`${t('耗时')}：${logs[i].use_time ?? '-'}s`}
+                    </div>
+                  );
+                })()
+              : renderLogContent(
                 other?.model_ratio,
                 other.completion_ratio,
                 other.model_price,
@@ -537,6 +601,36 @@ export const useLogsData = () => {
                 1.0,
               billingDisplayMode,
             );
+          } else if (isImageLog(logs[i])) {
+            const isSuccess = logs[i].status === 1 || logs[i].status === 2 || logs[i].completion_tokens > 0;
+            if (isSuccess) {
+              content = renderModelPrice(
+                logs[i].prompt_tokens,
+                logs[i].completion_tokens,
+                other?.model_ratio,
+                other?.model_price,
+                other?.completion_ratio,
+                other?.group_ratio,
+                other?.user_group_ratio,
+                other?.cache_tokens || 0,
+                other?.cache_ratio || 1.0,
+                other?.image || false,
+                other?.image_ratio || 0,
+                other?.image_output || 0,
+                other?.web_search || false,
+                other?.web_search_call_count || 0,
+                other?.web_search_price || 0,
+                other?.file_search || false,
+                other?.file_search_call_count || 0,
+                other?.file_search_price || 0,
+                other?.audio_input_seperate_price || false,
+                other?.audio_input_token_count || 0,
+                other?.audio_input_price || 0,
+                other?.image_generation_call || false,
+                other?.image_generation_call_price || 0,
+                billingDisplayMode,
+              );
+            }
           } else {
             content = renderModelPrice(
               logs[i].prompt_tokens,
