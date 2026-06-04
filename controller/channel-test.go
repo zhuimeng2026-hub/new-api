@@ -62,10 +62,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		constant.ChannelTypeMidjourney,
 		constant.ChannelTypeMidjourneyPlus,
 		constant.ChannelTypeSunoAPI,
-		constant.ChannelTypeKling,
 		constant.ChannelTypeJimeng,
-		constant.ChannelTypeDoubaoVideo,
-		constant.ChannelTypeVidu,
 	}
 	if lo.Contains(unsupportedTestChannelTypes, channel.Type) {
 		channelTypeName := constant.GetChannelTypeName(channel.Type)
@@ -130,6 +127,17 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		if strings.HasSuffix(testModel, ratio_setting.CompactModelSuffix) {
 			requestPath = "/v1/responses/compact"
 		}
+
+		// Video generation models
+		if strings.Contains(strings.ToLower(testModel), "seedance") ||
+			strings.Contains(strings.ToLower(testModel), "kling") ||
+			strings.Contains(strings.ToLower(testModel), "sora") ||
+			strings.Contains(strings.ToLower(testModel), "vidu") ||
+			channel.Type == constant.ChannelTypeDoubaoVideo ||
+			channel.Type == constant.ChannelTypeKling ||
+			channel.Type == constant.ChannelTypeSora {
+			requestPath = "/v1/videos"
+		}
 	}
 	if strings.HasPrefix(requestPath, "/v1/responses/compact") {
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
@@ -188,6 +196,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatOpenAIImage
 		case constant.EndpointTypeEmbeddings:
 			relayFormat = types.RelayFormatEmbedding
+		case constant.EndpointTypeOpenAIVideo:
+			relayFormat = types.RelayFormatTask
 		default:
 			relayFormat = types.RelayFormatOpenAI
 		}
@@ -215,9 +225,18 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") {
 			relayFormat = types.RelayFormatOpenAIResponsesCompaction
 		}
+		if strings.HasPrefix(c.Request.URL.Path, "/v1/videos") {
+			relayFormat = types.RelayFormatTask
+		}
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
+
+	// Video/Task models use a completely different adaptor interface (TaskAdaptor)
+	// with async submit/poll flow. Handle them separately.
+	if relayFormat == types.RelayFormatTask {
+		return testChannelTask(c, channel, testModel, endpointType, relayFormat, w)
+	}
 
 	info, err := relaycommon.GenRelayInfo(c, relayFormat, request, nil)
 
@@ -598,6 +617,148 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 	return message
 }
 
+// testChannelTask handles video/task model testing using the TaskAdaptor interface.
+// Video models (seedance, kling, sora, vidu, etc.) use an async submit/poll flow
+// that is completely different from the standard Adaptor interface.
+func testChannelTask(c *gin.Context, channel *model.Channel, testModel string, endpointType string, relayFormat types.RelayFormat, w *httptest.ResponseRecorder) testResult {
+	tik := time.Now()
+
+	// Build a TaskSubmitReq as the request body
+	taskReqBody := &relaycommon.TaskSubmitReq{
+		Prompt: "A cute cat playing",
+		Model:  testModel,
+	}
+	reqData, err := common.Marshal(taskReqBody)
+	if err != nil {
+		return testResult{
+			localErr: fmt.Errorf("failed to marshal task request: %w", err),
+		}
+	}
+
+	// Set up a fake HTTP request with the task request body
+	c.Request = &http.Request{
+		Method: "POST",
+		URL:    &url.URL{Path: "/v1/videos"},
+		Body:   io.NopCloser(bytes.NewBuffer(reqData)),
+		Header: make(http.Header),
+	}
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	// Set channel_type so GetTaskPlatform can find the right adaptor
+	c.Set("channel_type", channel.Type)
+
+	// Generate relay info for the task flow
+	info, err := relaycommon.GenRelayInfo(c, relayFormat, nil, nil)
+	if err != nil {
+		return testResult{
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeGenRelayInfoFailed),
+		}
+	}
+	info.IsChannelTest = true
+	info.InitChannelMeta(c)
+
+	// Apply model mapping
+	if err := helper.ModelMappedHelper(c, info, nil); err != nil {
+		return testResult{
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeChannelModelMappedError),
+		}
+	}
+
+	// Get the task adaptor for this channel type
+	platform := constant.TaskPlatform(strconv.Itoa(channel.Type))
+	taskAdaptor := relay.GetTaskAdaptor(platform)
+	if taskAdaptor == nil {
+		return testResult{
+			localErr: fmt.Errorf("no task adaptor for channel type %d", channel.Type),
+		}
+	}
+	taskAdaptor.Init(info)
+
+	// Validate the request (parses body into TaskSubmitReq, stores in context)
+	if taskErr := taskAdaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
+		return testResult{
+			localErr:    fmt.Errorf("%s", taskErr.Message),
+			newAPIError: types.NewError(fmt.Errorf("%s", taskErr.Message), types.ErrorCodeConvertRequestFailed),
+		}
+	}
+
+	// Build the provider-specific request body
+	requestBody, err := taskAdaptor.BuildRequestBody(c, info)
+	if err != nil {
+		return testResult{
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
+		}
+	}
+
+	// Send the request to upstream
+	resp, err := taskAdaptor.DoRequest(c, info, requestBody)
+	if err != nil {
+		return testResult{
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+		}
+	}
+
+	// Handle response
+	if resp != nil {
+		if resp.StatusCode != http.StatusOK {
+			responseBody, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			err := fmt.Errorf("status code: %d, body: %s", resp.StatusCode, string(responseBody))
+			common.SysError(fmt.Sprintf(
+				"channel test bad response: channel_id=%d name=%s type=%d model=%s endpoint_type=%s status=%d",
+				channel.Id, channel.Name, channel.Type, testModel, endpointType, resp.StatusCode,
+			))
+			return testResult{
+				localErr:    err,
+				newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+			}
+		}
+	}
+
+	// Parse the task submission response (gets task ID, etc.)
+	_, taskData, taskErr := taskAdaptor.DoResponse(c, resp, info)
+	if taskErr != nil {
+		return testResult{
+			localErr:    fmt.Errorf("%s", taskErr.Message),
+			newAPIError: types.NewError(fmt.Errorf("%s", taskErr.Message), types.ErrorCodeBadResponseBody),
+		}
+	}
+
+	// Check for error patterns in the response body
+	if bodyErr := detectErrorFromTestResponseBody(taskData); bodyErr != nil {
+		return testResult{
+			localErr:    bodyErr,
+			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+		}
+	}
+
+	tok := time.Now()
+	consumedSeconds := int(tok.Sub(tik).Seconds())
+	// Task test succeeded — record a minimal consume log
+	model.RecordConsumeLog(c, 1, model.RecordConsumeLogParams{
+		ChannelId:        channel.Id,
+		PromptTokens:     0,
+		CompletionTokens: 0,
+		ModelName:        testModel,
+		TokenName:        "模型测试",
+		Quota:            0,
+		Content:          "模型测试",
+		UseTimeSeconds:   consumedSeconds,
+		IsStream:         false,
+		Group:            info.UsingGroup,
+	})
+	common.SysLog(fmt.Sprintf("testing channel #%d (video task), model: %s", channel.Id, testModel))
+	return testResult{
+		context:     c,
+		localErr:    nil,
+		newAPIError: nil,
+	}
+}
+
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
 	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
 
@@ -660,6 +821,15 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				req.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
 			}
 			return req
+		case constant.EndpointTypeOpenAIVideo:
+			// 返回 VideoRequest
+			return &dto.VideoRequest{
+				Model:    model,
+				Prompt:   "A cute cat playing",
+				Duration: 5,
+				Width:    1280,
+				Height:   720,
+			}
 		}
 	}
 
