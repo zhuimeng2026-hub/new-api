@@ -243,3 +243,27 @@ For request structs that are parsed from client JSON and then re-marshaled to up
   - field absent in client JSON => `nil` => omitted on marshal;
   - field explicitly set to zero/false => non-`nil` pointer => must still be sent upstream.
 - Avoid using non-pointer scalars with `omitempty` for optional request parameters, because zero values (`0`, `0.0`, `false`) will be silently dropped during marshal.
+
+### Rule 7: Database Read-Only — All Modifications Must Go Through API
+
+Direct database modification (UPDATE/DELETE/INSERT via `psql`) is **forbidden**. Direct SQL is only allowed for **SELECT queries**.
+
+**Why:** Direct DB writes bypass the application layer, leaving Redis cache stale. This causes 401/503 errors that are hard to diagnose (see `expired_time=0`, `remain_quota` desync, `group` mismatch).
+
+**How to modify data:**
+- Use the new-api HTTP API (`curl` with admin credentials from `.env`)
+- Token updates: `PUT /api/token/` (auto-syncs Redis cache)
+- User updates: `PUT /api/user/`
+- Channel updates: `PUT /api/channel/`
+- Admin credentials: `new_admin_key` and `New-Api-User` from `/opt/new-api/.env`
+
+**Exception:** Emergency database fixes when the API itself is broken (e.g., schema migration issues). In that case, also clear the relevant Redis cache manually after the DB change.
+
+### Rule 8: No Docker Build on This Machine
+
+**Docker 构建操作在本机被严格禁止。**
+
+- ❌ 禁止：`docker build`、`docker-compose build`、`docker buildx build`、任何涉及镜像构建的命令
+- ✅ 允许：`docker run`、`docker logs`、`docker ps`、`docker exec`、`docker stop`、`docker rm` 等运维操作
+
+**Why:** 用户有专门的构建环境，本机不应承担构建任务。如需构建镜像，应告知用户并在合适的环境中执行。
