@@ -1,0 +1,82 @@
+============================================
+ gpt-image-2 日志展示功能 — 无人值守部署
+ 2026-06-02 23:53:17
+============================================
+[INFO] 计划文件: /root/.claude/plans/moonlit-launching-rose.md
+[INFO] 目标文件: /opt/new-api/web/src/hooks/usage-logs/useUsageLogsData.jsx
+[INFO] 日志文件: /opt/new-api/deploy_gpt_image2_logs_20260602_235317.log
+[INFO] 已备份: /opt/new-api/web/src/hooks/usage-logs/useUsageLogsData.jsx.bak.20260602_235317
+
+[INFO] 正在执行 claude CLI (非交互模式)...
+
+Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.
+Error: Input must be provided either through stdin or as a prompt argument when using --print
+============================================
+ gpt-image-2 日志展示功能 — 无人值守部署
+ 2026-06-02 23:54:55
+============================================
+[INFO] 计划文件: /root/.claude/plans/moonlit-launching-rose.md
+[INFO] 目标文件: /opt/new-api/web/src/hooks/usage-logs/useUsageLogsData.jsx
+[INFO] 日志文件: /opt/new-api/deploy_gpt_image2_logs_20260602_235455.log
+[INFO] 已备份: /opt/new-api/web/src/hooks/usage-logs/useUsageLogsData.jsx.bak.20260602_235455
+[INFO] Prompt 文件: /tmp/deploy_gpt_image2_prompt_20260602_235455.txt
+
+[INFO] 正在执行 claude CLI (非交互模式)...
+
+All three modifications are complete and verified. Here's the summary:
+
+---
+
+## 修改摘要
+
+**文件:** `web/src/hooks/usage-logs/useUsageLogsData.jsx`
+
+### 1. 新增纯函数（第 44-71 行，import 之后、`useLogsData` 之前）
+
+- **`isImageLog(log)`** — 检测图像模型日志，三重判断：
+  - `model_name` 含 `image`（不区分大小写）
+  - `content` 匹配 `大小.*品质.*生成数量` 模式
+  - `other.request_conversion` 包含 `openai_image`
+
+- **`parseImageContent(content)`** — 从 content 字段解析尺寸/品质/生成数量，返回 `{ size, quality, count }`
+
+### 2. 日志详情分支（第 478-511 行）
+
+在 `type===2` 的日志详情渲染中，Claude 分支之后、通用 `renderLogContent` 之前插入 `isImageLog` 分支：
+
+- **成功请求:** 展示尺寸、品质、生成数量、请求路径、计费方式、单价、输入/输出 Tokens、耗时
+- **失败请求:** 展示错误码、错误类型、错误代码、请求路径、错误详情、耗时
+
+### 3. 计费过程分支（第 604-633 行）
+
+在 `type===2` 的计费过程渲染中，Claude 分支之后、通用 `renderModelPrice` 之前插入 `isImageLog` 分支：
+
+- **成功请求:** 复用现有 `renderModelPrice` 渲染计费过程
+- **失败请求:** 跳过计费（无 `content` 输出）
+
+### 未修改内容
+
+- 所有现有逻辑（Claude、音频、通用分支）保持不变
+- 其他展开行（渠道信息、Request ID、请求路径、请求转换、计费模式等）不受影响
+
+[SUCCESS] claude CLI 执行完成
+
+[INFO] 验证修改...
+[OK] isImageLog 已添加
+[OK] parseImageContent 已添加
+
+[INFO] 执行前端构建...
+ 5: 0x144ba33  [node]
+ 6: 0x1464b0a  [node]
+ 7: 0x1467cd8  [node]
+ 8: 0x1ccd051  [node]
+error: script "build" was terminated by signal SIGABRT (Abort)
+/opt/new-api/deploy_gpt_image2_logs.sh: line 111: 3779053 Aborted                 (core dumped) bun run build 2>&1
+     3779054 Done                    | tail -5
+[WARN] 前端构建失败，请检查代码
+
+============================================
+ 部署完成: 2026-06-02 23:59:39
+ 日志: /opt/new-api/deploy_gpt_image2_logs_20260602_235455.log
+ 备份: /opt/new-api/web/src/hooks/usage-logs/useUsageLogsData.jsx.bak.20260602_235455
+============================================

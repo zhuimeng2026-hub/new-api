@@ -45,6 +45,13 @@ cd web && bun install && bun run build && cd ..
 GOEXPERIMENT=greenteagc go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)' -extldflags '-static'" -o new-api
 ```
 
+### Makefile (shortcut)
+```bash
+make                # Build frontend + start backend dev server
+make build-frontend # Build frontend only
+make start-backend  # Start Go backend only
+```
+
 ### Docker
 ```bash
 docker-compose up -d    # Start with PostgreSQL + Redis
@@ -52,6 +59,16 @@ docker-compose up -d    # Start with PostgreSQL + Redis
 
 ### Default Credentials
 - First run creates root user: username `root`, password `123456`
+
+### Key Environment Variables
+See `.env.example` and README.md for the full list. Common ones:
+- `SQL_DSN` — Database connection string (omit for SQLite)
+- `REDIS_CONN_STRING` — Redis connection string
+- `SESSION_SECRET` — Required for multi-machine deployment
+- `CRYPTO_SECRET` — Required when using shared Redis
+- `STREAMING_TIMEOUT` — Streaming timeout in seconds (default: 300)
+- `STREAM_SCANNER_MAX_BUFFER_MB` — Max per-line buffer for stream scanner (default: 64)
+- `MAX_REQUEST_BODY_MB` — Max request body size after decompression (default: 32)
 
 ### Test Setup Pattern
 
@@ -79,7 +96,7 @@ Key points:
 
 ## Tech Stack
 
-- **Backend**: Go 1.22+ (go.mod specifies 1.25.1, Dockerfile uses 1.26.1), Gin web framework, GORM v2 ORM. Build requires `GOEXPERIMENT=greenteagc`.
+- **Backend**: Go 1.25+ (go.mod specifies 1.25.1, Dockerfile uses 1.26.1), Gin web framework, GORM v2 ORM. Build requires `GOEXPERIMENT=greenteagc`.
 - **Frontend**: React 18, Vite, Semi Design UI (@douyinfe/semi-ui)
 - **Databases**: SQLite, MySQL, PostgreSQL (all three must be supported)
 - **Cache**: Redis (go-redis) + in-memory cache

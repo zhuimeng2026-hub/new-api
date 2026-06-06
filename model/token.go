@@ -459,6 +459,26 @@ func DeleteTokenByIdAdmin(id int) (err error) {
 	return token.Delete()
 }
 
+func UpdateTokenUsedQuota(tokenId int, quota int) {
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeTokenUsedQuota, tokenId, quota)
+		return
+	}
+	updateTokenUsedQuota(tokenId, quota)
+}
+
+func updateTokenUsedQuota(id int, quota int) {
+	err := DB.Model(&Token{}).Where("id = ?", id).Updates(
+		map[string]interface{}{
+			"used_quota":    gorm.Expr("used_quota + ?", quota),
+			"accessed_time": common.GetTimestamp(),
+		},
+	).Error
+	if err != nil {
+		common.SysLog("failed to update token used quota: " + err.Error())
+	}
+}
+
 func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
