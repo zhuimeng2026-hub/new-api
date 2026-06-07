@@ -91,46 +91,57 @@ Key points:
 Layered architecture: Router -> Controller -> Service -> Model
 
 ```
-router/        — HTTP routing (API, relay, dashboard, web)
-controller/    — Request handlers
-service/       — Business logic (billing, channel affinity, quota, task orchestration)
-model/         — Data models and DB access (GORM)
-relay/         — AI API relay/proxy with provider adapters
-  relay/channel/ — Provider-specific adapters (openai/, claude/, gemini/, aws/, etc.)
-  relay/relay_adaptor.go — Adaptor factory by API type
-middleware/    — Auth, rate limiting, CORS, logging, distribution
-setting/       — Configuration management (ratio, model, operation, system, performance)
-common/        — Shared utilities (JSON, crypto, Redis, env, rate-limit, etc.)
-dto/           — Data transfer objects (request/response structs)
-constant/      — Constants (API types, channel types, context keys)
-types/         — Type definitions (relay formats, file sources, errors)
-i18n/          — Backend internationalization (go-i18n, en/zh)
-oauth/         — OAuth provider implementations
-pkg/           — Internal packages (cachex, ionet)
-web/           — React frontend
-  web/src/i18n/  — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
+router/        — HTTP routing. Composed of 5 sub-routers in SetRouter():
+                 SetApiRouter (/api/), SetRelayRouter (/v1/), SetDashboardRouter,
+                 SetVideoRouter, SetWebRouter (serves embedded React)
+controller/    — Request handlers (largest: channel.go 51KB, channel-test.go 33KB, relay.go 21KB)
+service/       — Business logic (largest: convert.go 32KB, channel_affinity.go 26KB)
+model/         — Data models and DB access (GORM). main.go has DB init, migration, column quoting helpers
+relay/         — AI API relay/proxy
+  relay/channel/         — 35+ provider adaptors (openai/, claude/, gemini/, aws/, etc.)
+  relay/channel/adapter.go — Adaptor and TaskAdaptor interfaces
+  relay/channel/task/    — 11 async task providers (ali, doubao, gemini, hailuo, jimeng, kling, sora, suno, vertex, vidu)
+  relay/relay_adaptor.go — GetAdaptor(apiType) factory + GetTaskAdaptor(platform)
+  relay/*_handler.go     — Per-format handlers: compatible, claude, gemini, embedding, image, audio, rerank, responses, mjproxy
+  relay/common/          — RelayInfo, billing overrides
+  relay/common_handler/  — Shared relay handler logic (rerank)
+middleware/    — Auth, rate limiting, CORS, logging, distribution, model-rate-limit, turnstile-check
+setting/       — Config in subdirectories: ratio_setting/, model_setting/, operation_setting/, system_setting/, console_setting/, performance_setting/, config/
+common/        — Shared utilities: json.go (MANDATORY wrapper), redis.go, crypto.go, env.go, rate-limit.go, disk_cache.go
+dto/           — Request/response structs (openai_request.go, claude.go, gemini.go, task.go, audio.go, embedding.go, rerank.go)
+constant/      — Constants: api_type.go, channel.go (types + base URLs), context_key.go, endpoint_type.go
+types/         — Type definitions: relay_format.go, error.go, file_source.go, channel_error.go
+i18n/          — Backend i18n: go-i18n with en.yaml, zh-CN.yaml, zh-TW.yaml
+oauth/         — OAuth providers: github, discord, linuxdo, oidc, generic
+pkg/           — Internal packages: cachex/, ionet/
+web/           — React 18 + Vite 5 + Semi Design UI + Tailwind CSS
+  web/src/pages/    — 24 page components
+  web/src/services/ — API service modules (15 dirs)
+  web/src/hooks/    — React hooks (17 files)
+  web/src/helpers/  — Helper utilities (17 files)
+  web/src/i18n/     — i18n config + 7 locale files (zh-CN, zh-TW, en, fr, ru, ja, vi)
 ```
+
+### Relay Pipeline
+
+Request flow: Router -> `controller.Relay(c, relayFormat)` -> format handler (`relay/*_handler.go`) -> `adaptor.Convert*Request()` -> `adaptor.DoRequest()` -> `adaptor.DoResponse()` -> `service.PostTextConsumeQuota()`
+
+Format handlers: `compatible_handler.go` (OpenAI chat), `claude_handler.go` (Claude Messages), `gemini_handler.go` (Gemini), `embedding_handler.go`, `image_handler.go`, `audio_handler.go`, `rerank_handler.go`, `responses_handler.go`, `mjproxy_handler.go`.
 
 ### Key Architectural Patterns
 
 **Relay Adaptor Pattern:**
-- Entry point: `relay/relay_adaptor.go` — `GetAdaptor(apiType)` returns provider-specific adaptor
-- Interface defined in `relay/channel/adapter.go` (note: file uses American spelling, type uses British)
-- Each provider in `relay/channel/` implements `channel.Adaptor` interface with these key methods:
-  - `Init`, `GetRequestURL`, `SetupRequestHeader`, `DoRequest`, `DoResponse`
-  - `ConvertOpenAIRequest`, `ConvertClaudeRequest`, `ConvertGeminiRequest` — format-specific converters
-  - `ConvertRerankRequest`, `ConvertEmbeddingRequest`, `ConvertAudioRequest`, `ConvertImageRequest`, `ConvertOpenAIResponsesRequest`
-  - `GetModelList`, `GetChannelName`
-- Channel types defined in `constant/channel.go`
-- Request flow: Router → relay handler files (`relay/*_handler.go`) → adaptor → upstream API
-- Each relay mode has its own handler: `chat` (compatible_handler.go), `claude`, `gemini`, `audio`, `image`, `embedding`, `rerank`, `responses`, `mjproxy`
-- `relay/common_handler/` — shared handler logic used by multiple relay modes
+- Interface in `relay/channel/adapter.go` (file: American spelling, type: British `Adaptor`)
+- Factory: `relay/relay_adaptor.go` `GetAdaptor(apiType)` switches on `constant.APIType*`
+- Each provider in `relay/channel/<provider>/` implements `channel.Adaptor` with: `Init`, `GetRequestURL`, `SetupRequestHeader`, `DoRequest`, `DoResponse`, `GetModelList`, `GetChannelName`
+- Format converters per adaptor: `ConvertOpenAIRequest`, `ConvertClaudeRequest`, `ConvertGeminiRequest`, `ConvertRerankRequest`, `ConvertEmbeddingRequest`, `ConvertAudioRequest`, `ConvertImageRequest`, `ConvertOpenAIResponsesRequest`
+- Channel types in `constant/channel.go`; `ChannelBaseURLs` maps type -> default URL
 
 **Task Adaptor Pattern (async tasks like video/image generation):**
-- `channel.TaskAdaptor` interface in `relay/channel/adapter.go` — handles submit/poll/bill lifecycle
-- Key methods: `ValidateRequestAndSetAction`, `BuildRequestURL`, `BuildRequestBody`, `DoRequest`, `DoResponse`, `FetchTask`, `ParseTaskResult`
+- `channel.TaskAdaptor` interface in `relay/channel/adapter.go`
+- Methods: `ValidateRequestAndSetAction`, `BuildRequestURL`, `BuildRequestBody`, `DoRequest`, `DoResponse`, `FetchTask`, `ParseTaskResult`
 - Billing hooks: `EstimateBilling` (pre-charge), `AdjustBillingOnSubmit`, `AdjustBillingOnComplete` (settlement)
-- Task providers: `relay/channel/task/` (ali, doubao, gemini, hailuo, jimeng, kling, sora, suno, vertex, vidu)
+- Factory: `relay/relay_adaptor.go` `GetTaskAdaptor(platform)`
 
 **Database Cross-Compatibility:**
 - `model/main.go` contains DB-agnostic column quoting (`commonGroupCol`, `commonKeyCol`)
@@ -145,6 +156,7 @@ web/           — React frontend
 - Go binary embeds the React frontend via `//go:embed web/dist` in `main.go`
 - Production build: build frontend first (`cd web && bun run build`), then build Go binary
 - Development: run frontend dev server (`bun run dev` proxies to Go backend on :3000) separately from `go run main.go`
+- Frontend uses Semi Design UI (`@douyinfe/semi-ui`) + Tailwind CSS; `.js` files treated as JSX via Vite plugin; `@` alias resolves to `./src`
 
 ## Internationalization (i18n)
 
@@ -258,12 +270,3 @@ Direct database modification (UPDATE/DELETE/INSERT via `psql`) is **forbidden**.
 - Admin credentials: `new_admin_key` and `New-Api-User` from `/opt/new-api/.env`
 
 **Exception:** Emergency database fixes when the API itself is broken (e.g., schema migration issues). In that case, also clear the relevant Redis cache manually after the DB change.
-
-### Rule 8: No Docker Build on This Machine
-
-**Docker 构建操作在本机被严格禁止。**
-
-- ❌ 禁止：`docker build`、`docker-compose build`、`docker buildx build`、任何涉及镜像构建的命令
-- ✅ 允许：`docker run`、`docker logs`、`docker ps`、`docker exec`、`docker stop`、`docker rm` 等运维操作
-
-**Why:** 用户有专门的构建环境，本机不应承担构建任务。如需构建镜像，应告知用户并在合适的环境中执行。
