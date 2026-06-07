@@ -30,3 +30,9 @@ data/
 .gocache-temp
 .gopath
 .gstack/
+
+# Large files - never commit
+*.tar
+*.tar.gz
+new-api-db-dump-*.sql
+new-api-*.tar.gz
