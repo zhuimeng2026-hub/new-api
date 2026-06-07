@@ -44,17 +44,17 @@ func GetPageQuery(c *gin.Context) *PageInfo {
 	if page, err := strconv.Atoi(c.Query("p")); err == nil {
 		pageInfo.Page = page
 	}
+	if pageInfo.Page < 1 {
+		// 兼容 page 参数名
+		if page, err := strconv.Atoi(c.Query("page")); err == nil && page > 0 {
+			pageInfo.Page = page
+		}
+	}
 	if pageSize, err := strconv.Atoi(c.Query("page_size")); err == nil {
 		pageInfo.PageSize = pageSize
 	}
 	if pageInfo.Page < 1 {
-		// 兼容
-		page, _ := strconv.Atoi(c.Query("p"))
-		if page != 0 {
-			pageInfo.Page = page
-		} else {
-			pageInfo.Page = 1
-		}
+		pageInfo.Page = 1
 	}
 
 	if pageInfo.PageSize == 0 {

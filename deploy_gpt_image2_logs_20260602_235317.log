@@ -1,0 +1,13 @@
+============================================
+ gpt-image-2 日志展示功能 — 无人值守部署
+ 2026-06-02 23:53:17
+============================================
+[INFO] 计划文件: /root/.claude/plans/moonlit-launching-rose.md
+[INFO] 目标文件: /opt/new-api/web/src/hooks/usage-logs/useUsageLogsData.jsx
+[INFO] 日志文件: /opt/new-api/deploy_gpt_image2_logs_20260602_235317.log
+[INFO] 已备份: /opt/new-api/web/src/hooks/usage-logs/useUsageLogsData.jsx.bak.20260602_235317
+
+[INFO] 正在执行 claude CLI (非交互模式)...
+
+Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.
+Error: Input must be provided either through stdin or as a prompt argument when using --print
