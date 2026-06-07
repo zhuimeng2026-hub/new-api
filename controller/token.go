@@ -8,6 +8,7 @@ import (
 
 	"github.com/zhuimeng2026-hub/new-api/common"
 	"github.com/zhuimeng2026-hub/new-api/i18n"
+	"github.com/zhuimeng2026-hub/new-api/logger"
 	"github.com/zhuimeng2026-hub/new-api/model"
 	"github.com/zhuimeng2026-hub/new-api/setting/operation_setting"
 
@@ -363,6 +364,74 @@ func UpdateToken(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    buildMaskedTokenResponse(cleanToken),
+	})
+}
+
+func RechargeToken(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	userId := c.GetInt("id")
+
+	var req struct {
+		Amount  int    `json:"amount"`
+		TradeNo string `json:"trade_no"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if req.Amount <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	var token *model.Token
+	if model.IsAdmin(userId) {
+		token, err = model.GetTokenById(id)
+	} else {
+		token, err = model.GetTokenByIds(id, userId)
+	}
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	err = model.IncreaseTokenQuota(token.Id, token.Key, req.Amount)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	// If the token was exhausted, re-enable it since it now has quota
+	if token.Status == common.TokenStatusExhausted {
+		token.Status = common.TokenStatusEnabled
+		if err := token.SelectUpdate(); err != nil {
+			common.SysLog("failed to re-enable token after recharge: " + err.Error())
+		}
+	}
+
+	// Re-fetch to get the updated remain_quota
+	token, err = model.GetTokenById(token.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	tradeInfo := ""
+	if req.TradeNo != "" {
+		tradeInfo = fmt.Sprintf("，交易号: %s", req.TradeNo)
+	}
+	model.RecordLog(userId, model.LogTypeManage, fmt.Sprintf("为令牌 %s 充值额度 %s%s", token.Name, logger.LogQuota(req.Amount), tradeInfo))
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"remain_quota": token.RemainQuota,
+		},
 	})
 }
 
