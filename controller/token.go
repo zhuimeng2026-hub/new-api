@@ -56,8 +56,14 @@ func GetAllTokens(c *gin.Context) {
 	var total int64
 	var err error
 	if model.IsAdmin(userId) {
-		tokens, err = model.GetAllTokens(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
-		total, _ = model.CountAllTokens()
+		filterUserId, _ := strconv.Atoi(c.Query("user_id"))
+		if filterUserId > 0 {
+			tokens, err = model.GetAllUserTokens(filterUserId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+			total, _ = model.CountUserTokens(filterUserId)
+		} else {
+			tokens, err = model.GetAllTokens(pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+			total, _ = model.CountAllTokens()
+		}
 	} else {
 		tokens, err = model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 		total, _ = model.CountUserTokens(userId)
