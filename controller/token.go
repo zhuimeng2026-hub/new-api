@@ -15,6 +15,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// UpdateTokenRequest is the request body for updating a token.
+// Pointer types are used for optional fields to distinguish between
+// "not provided" (nil) and "explicitly set to zero value" (non-nil pointer).
+type UpdateTokenRequest struct {
+	Id                  int     `json:"id" binding:"required"`
+	Name                *string `json:"name,omitempty"`
+	ExpiredTime         *int64  `json:"expired_time,omitempty"`
+	RemainQuota         *int    `json:"remain_quota,omitempty"`
+	UnlimitedQuota      *bool   `json:"unlimited_quota,omitempty"`
+	ModelLimitsEnabled  *bool   `json:"model_limits_enabled,omitempty"`
+	ModelLimits         *string `json:"model_limits,omitempty"`
+	AllowIps            *string `json:"allow_ips,omitempty"`
+	Group               *string `json:"group,omitempty"`
+	CrossGroupRetry     *bool   `json:"cross_group_retry,omitempty"`
+	Status              *int    `json:"status,omitempty"`
+}
+
 func buildMaskedTokenResponse(token *model.Token) *model.Token {
 	if token == nil {
 		return nil
@@ -300,38 +317,49 @@ func DeleteToken(c *gin.Context) {
 func UpdateToken(c *gin.Context) {
 	userId := c.GetInt("id")
 	statusOnly := c.Query("status_only")
-	token := model.Token{}
-	err := c.ShouldBindJSON(&token)
+
+	// Use a request struct with pointer types to support partial updates.
+	// Nil pointer means "not provided" (preserve existing value),
+	// non-nil pointer means "explicitly set" (even if zero value).
+	var req UpdateTokenRequest
+	err := c.ShouldBindJSON(&req)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if len(token.Name) > 50 {
+
+	// Validate name length if provided
+	if req.Name != nil && len(*req.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
+
+	// Validate quota if provided
+	if req.UnlimitedQuota != nil && !*req.UnlimitedQuota {
+		if req.RemainQuota != nil && *req.RemainQuota < 0 {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
 			return
 		}
 		maxQuotaValue := int((1000000000 * common.QuotaPerUnit))
-		if token.RemainQuota > maxQuotaValue {
+		if req.RemainQuota != nil && *req.RemainQuota > maxQuotaValue {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return
 		}
 	}
+
 	var cleanToken *model.Token
 	if model.IsAdmin(userId) {
-		cleanToken, err = model.GetTokenById(token.Id)
+		cleanToken, err = model.GetTokenById(req.Id)
 	} else {
-		cleanToken, err = model.GetTokenByIds(token.Id, userId)
+		cleanToken, err = model.GetTokenByIds(req.Id, userId)
 	}
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if token.Status == common.TokenStatusEnabled {
+
+	// Check if enabling an expired/exhausted token
+	if req.Status != nil && *req.Status == common.TokenStatusEnabled {
 		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
 			common.ApiErrorI18n(c, i18n.MsgTokenExpiredCannotEnable)
 			return
@@ -341,20 +369,44 @@ func UpdateToken(c *gin.Context) {
 			return
 		}
 	}
+
 	if statusOnly != "" {
-		cleanToken.Status = token.Status
+		// Status-only update
+		if req.Status != nil {
+			cleanToken.Status = *req.Status
+		}
 	} else {
+		// Full update: only apply fields that are explicitly provided (non-nil)
 		// If you add more fields, please also update token.Update()
-		cleanToken.Name = token.Name
-		cleanToken.ExpiredTime = token.ExpiredTime
-		cleanToken.RemainQuota = token.RemainQuota
-		cleanToken.UnlimitedQuota = token.UnlimitedQuota
-		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
-		cleanToken.ModelLimits = token.ModelLimits
-		cleanToken.AllowIps = token.AllowIps
-		cleanToken.Group = token.Group
-		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		if req.Name != nil {
+			cleanToken.Name = *req.Name
+		}
+		if req.ExpiredTime != nil {
+			cleanToken.ExpiredTime = *req.ExpiredTime
+		}
+		if req.RemainQuota != nil {
+			cleanToken.RemainQuota = *req.RemainQuota
+		}
+		if req.UnlimitedQuota != nil {
+			cleanToken.UnlimitedQuota = *req.UnlimitedQuota
+		}
+		if req.ModelLimitsEnabled != nil {
+			cleanToken.ModelLimitsEnabled = *req.ModelLimitsEnabled
+		}
+		if req.ModelLimits != nil {
+			cleanToken.ModelLimits = *req.ModelLimits
+		}
+		if req.AllowIps != nil {
+			cleanToken.AllowIps = req.AllowIps
+		}
+		if req.Group != nil {
+			cleanToken.Group = *req.Group
+		}
+		if req.CrossGroupRetry != nil {
+			cleanToken.CrossGroupRetry = *req.CrossGroupRetry
+		}
 	}
+
 	err = cleanToken.Update()
 	if err != nil {
 		common.ApiError(c, err)

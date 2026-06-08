@@ -64,16 +64,18 @@ const EditTokenModal = (props) => {
   const [groups, setGroups] = useState([]);
   const isEdit = props.editingToken.id !== undefined;
 
-  const getInitValues = () => ({
-    name: '',
-    remain_quota: 0,
-    expired_time: -1,
-    unlimited_quota: true,
-    model_limits_enabled: false,
-    model_limits: [],
-    allow_ips: '',
-    group: '',
-    cross_group_retry: false,
+  // getInitValues now accepts optional existing token data for edit mode
+  // Uses undefined instead of empty string for optional fields to avoid overwriting existing values
+  const getInitValues = (existingData = {}) => ({
+    name: existingData.name || '',
+    remain_quota: existingData.remain_quota ?? 0,
+    expired_time: existingData.expired_time ?? -1,
+    unlimited_quota: existingData.unlimited_quota ?? true,
+    model_limits_enabled: existingData.model_limits_enabled ?? false,
+    model_limits: existingData.model_limits ?? [],
+    allow_ips: existingData.allow_ips ?? '',
+    group: existingData.group ?? '',  // preserve existing group value
+    cross_group_retry: existingData.cross_group_retry ?? false,
     tokenCount: 1,
   });
 
@@ -162,8 +164,9 @@ const EditTokenModal = (props) => {
       } else {
         data.model_limits = [];
       }
+      // Pass existing data to getInitValues to preserve group and other optional fields
       if (formApiRef.current) {
-        formApiRef.current.setValues({ ...getInitValues(), ...data });
+        formApiRef.current.setValues(getInitValues(data));
       }
     } else {
       showError(message);
