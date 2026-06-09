@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zhuimeng2026-hub/new-api/common"
 	"github.com/zhuimeng2026-hub/new-api/i18n"
@@ -468,6 +469,24 @@ func RechargeToken(c *gin.Context) {
 		token.Status = common.TokenStatusEnabled
 		if err := token.SelectUpdate(); err != nil {
 			common.SysLog("failed to re-enable token after recharge: " + err.Error())
+		}
+	}
+
+	// Create top_ups record for reconciliation (keygen and admin recharges)
+	if req.TradeNo != "" {
+		now := time.Now().Unix()
+		topUp := &model.TopUp{
+			UserId:        token.UserId,
+			Amount:        int64(req.Amount),
+			Money:         float64(req.Amount) / 500000,
+			TradeNo:       req.TradeNo,
+			PaymentMethod: "keygen",
+			CreateTime:    now,
+			CompleteTime:  now,
+			Status:        common.TopUpStatusSuccess,
+		}
+		if err := topUp.Insert(); err != nil {
+			common.SysLog(fmt.Sprintf("failed to insert top_ups record for recharge: trade_no=%s, err=%v", req.TradeNo, err))
 		}
 	}
 
