@@ -9,7 +9,7 @@ BASE_URL = "https://aikey.aixifs.com"
 TOKEN = "8PVg6IMq4Zm5k0kX0GUMGP2yXbaUgVUQd8gvzMD5Yf3xl386"
 HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
 
-# 提交任务
+# 提交任务（720p 无视频参考，基础 SKU）
 resp = requests.post(f"{BASE_URL}/v1/videos", headers=HEADERS, json={
     "model": "doubao-seedance-2-0",
     "prompt": "A golden retriever playing in autumn leaves in a park, cinematic lighting",

@@ -220,9 +220,11 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 
-	// 从 metadata 解析 resolution
+	// 优先从顶层字段读取 resolution，fallback 到 metadata
 	var resolution string
-	if req.Metadata != nil {
+	if req.Resolution != "" {
+		resolution = req.Resolution
+	} else if req.Metadata != nil {
 		if res, ok := req.Metadata["resolution"].(string); ok {
 			resolution = res
 		}
@@ -331,6 +333,18 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		}
 	}
 
+	// 从顶层字段读取（对齐官方 API 格式）
+	if req.Resolution != "" {
+		r.Resolution = req.Resolution
+	}
+	if req.Ratio != "" {
+		r.Ratio = req.Ratio
+	}
+	if req.Duration > 0 {
+		r.Duration = dto.IntValue(req.Duration)
+	}
+
+	// metadata 作为 fallback / 覆盖（向后兼容）
 	metadata := req.Metadata
 	if err := taskcommon.UnmarshalMetadata(metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
