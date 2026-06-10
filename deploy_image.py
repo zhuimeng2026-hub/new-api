@@ -149,6 +149,20 @@ def cmd_check():
 
     print("=" * 50)
 
+def get_compose_image() -> str | None:
+    """Extract the service image tag from docker-compose.yml."""
+    try:
+        content = COMPOSE_FILE.read_text()
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if stripped.startswith("image:") and "postgres" not in stripped and "redis" not in stripped and "mysql" not in stripped:
+                return stripped.split("image:", 1)[1].strip()
+    except Exception:
+        pass
+    return None
+
 def check_sql_dsn() -> bool:
     """Verify SQL_DSN is configured for PostgreSQL in docker-compose.yml."""
     try:
@@ -203,6 +217,15 @@ def cmd_deploy(tar_path: Path, backup: bool = True, timeout: int = HEALTH_TIMEOU
         log_error("Failed to load image")
         sys.exit(1)
     log_ok(f"Image loaded: {image_tag}")
+
+    # 3.1 Ensure loaded image tag matches what docker-compose expects
+    expected_tag = get_compose_image()
+    if expected_tag and image_tag != expected_tag:
+        log_info(f"Tagging {image_tag} → {expected_tag} (to match docker-compose.yml)")
+        run_cmd(["docker", "tag", image_tag, expected_tag])
+        log_ok(f"Tagged: {expected_tag}")
+    elif expected_tag:
+        log_ok(f"Image tag matches compose: {expected_tag}")
 
     # 4. Stop current containers
     log_info("Stopping current containers...")
