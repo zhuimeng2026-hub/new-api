@@ -434,16 +434,24 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	// 如果是添加操作，检查 channel 和 key 是否为空（必须在解引用之前检查）
+	if isAdd {
+		if channel == nil || channel.Key == "" {
+			return fmt.Errorf("channel cannot be empty")
+		}
+	}
+
+	// channel 为 nil 时直接返回错误（UpdateChannel 等场景传入指针可能为 nil）
+	if channel == nil {
+		return fmt.Errorf("channel cannot be nil")
+	}
+
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
 	}
 
-	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
-		if channel == nil || channel.Key == "" {
-			return fmt.Errorf("channel cannot be empty")
-		}
 
 		// 检查模型名称长度是否超过 255
 		for _, m := range channel.GetModels() {

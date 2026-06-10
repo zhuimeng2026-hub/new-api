@@ -36,3 +36,4 @@ data/
 *.tar.gz
 new-api-db-dump-*.sql
 new-api-*.tar.gz
+CLAUDE.md

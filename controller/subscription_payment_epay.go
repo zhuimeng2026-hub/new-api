@@ -29,12 +29,19 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
+	userId := c.GetInt("id")
+	common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] Entry: userId=%d, planId=%d, paymentMethod=%s", userId, req.PlanId, req.PaymentMethod))
+
 	plan, err := model.GetSubscriptionPlanById(req.PlanId)
 	if err != nil {
+		common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] GetSubscriptionPlanById failed: planId=%d, err=%v", req.PlanId, err))
 		common.ApiError(c, err)
 		return
 	}
+	common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] Plan found: planId=%d, title=%s, price=%.2f", plan.Id, plan.Title, plan.PriceAmount))
+
 	if !plan.Enabled {
+		common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] Plan not enabled: planId=%d", plan.Id))
 		common.ApiErrorMsg(c, "套餐未启用")
 		return
 	}
@@ -47,13 +54,14 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
-	userId := c.GetInt("id")
 	if plan.MaxPurchasePerUser > 0 {
 		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
 		if err != nil {
+			common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] CountUserSubscriptionsByPlan failed: userId=%d, planId=%d, err=%v", userId, plan.Id, err))
 			common.ApiError(c, err)
 			return
 		}
+		common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] MaxPurchasePerUser check: userId=%d, planId=%d, currentCount=%d, maxAllowed=%d", userId, plan.Id, count, plan.MaxPurchasePerUser))
 		if count >= int64(plan.MaxPurchasePerUser) {
 			common.ApiErrorMsg(c, "已达到该套餐购买上限")
 			return
@@ -77,9 +85,11 @@ func SubscriptionRequestEpay(c *gin.Context) {
 
 	client := GetEpayClient()
 	if client == nil {
+		common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] EpayClient is nil: userId=%d", userId))
 		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
 	}
+	common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] EpayClient ready: userId=%d, tradeNo=%s", userId, tradeNo))
 
 	order := &model.SubscriptionOrder{
 		UserId:        userId,
@@ -91,9 +101,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Status:        common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
+		common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] Order insert failed: tradeNo=%s, err=%v", tradeNo, err))
 		common.ApiErrorMsg(c, "创建订单失败")
 		return
 	}
+	common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] Order inserted: tradeNo=%s, userId=%d, planId=%d, money=%.2f", tradeNo, userId, plan.Id, plan.PriceAmount))
+
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
@@ -104,15 +117,19 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
+		common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] Purchase failed: tradeNo=%s, err=%v", tradeNo, err))
 		_ = model.ExpireSubscriptionOrder(tradeNo)
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
+	common.SysLog(fmt.Sprintf("[SubscriptionRequestEpay] Purchase success: tradeNo=%s, uri=%s", tradeNo, uri))
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 
 func SubscriptionEpayNotify(c *gin.Context) {
 	var params map[string]string
+
+	common.SysLog(fmt.Sprintf("[SubscriptionEpayNotify] Entry: method=%s", c.Request.Method))
 
 	if c.Request.Method == "POST" {
 		// POST 请求：从 POST body 解析参数
@@ -144,9 +161,11 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
+		common.SysLog(fmt.Sprintf("[SubscriptionEpayNotify] Verify failed: err=%v, verifyStatus=%v", err, verifyInfo != nil && verifyInfo.VerifyStatus))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
+	common.SysLog(fmt.Sprintf("[SubscriptionEpayNotify] Verify success: tradeNo=%s, tradeStatus=%s", verifyInfo.ServiceTradeNo, verifyInfo.TradeStatus))
 
 	if verifyInfo.TradeStatus != epay.StatusTradeSuccess {
 		_, _ = c.Writer.Write([]byte("fail"))
@@ -157,9 +176,11 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
 	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo)); err != nil {
+		common.SysLog(fmt.Sprintf("[SubscriptionEpayNotify] CompleteSubscriptionOrder failed: tradeNo=%s, err=%v", verifyInfo.ServiceTradeNo, err))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
+	common.SysLog(fmt.Sprintf("[SubscriptionEpayNotify] CompleteSubscriptionOrder success: tradeNo=%s", verifyInfo.ServiceTradeNo))
 
 	_, _ = c.Writer.Write([]byte("success"))
 }
@@ -168,6 +189,8 @@ func SubscriptionEpayNotify(c *gin.Context) {
 // It verifies the payload and completes the order, then redirects to console.
 func SubscriptionEpayReturn(c *gin.Context) {
 	var params map[string]string
+
+	common.SysLog(fmt.Sprintf("[SubscriptionEpayReturn] Entry: method=%s", c.Request.Method))
 
 	if c.Request.Method == "POST" {
 		// POST 请求：从 POST body 解析参数
@@ -199,16 +222,21 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
+		common.SysLog(fmt.Sprintf("[SubscriptionEpayReturn] Verify failed: err=%v, verifyStatus=%v", err, verifyInfo != nil && verifyInfo.VerifyStatus))
 		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
 		return
 	}
+	common.SysLog(fmt.Sprintf("[SubscriptionEpayReturn] Verify success: tradeNo=%s, tradeStatus=%s", verifyInfo.ServiceTradeNo, verifyInfo.TradeStatus))
+
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo)); err != nil {
+			common.SysLog(fmt.Sprintf("[SubscriptionEpayReturn] CompleteSubscriptionOrder failed: tradeNo=%s, err=%v", verifyInfo.ServiceTradeNo, err))
 			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
 			return
 		}
+		common.SysLog(fmt.Sprintf("[SubscriptionEpayReturn] CompleteSubscriptionOrder success: tradeNo=%s", verifyInfo.ServiceTradeNo))
 		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=success")
 		return
 	}

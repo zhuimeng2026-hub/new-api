@@ -50,12 +50,15 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	var err error
 	err = DB.Where("trade_no = ?", tradeNo).First(&topUp).Error
 	if err != nil {
+		common.SysLog(fmt.Sprintf("[GetTopUpByTradeNo] tradeNo=%s not found, error: %v", tradeNo, err))
 		return nil
 	}
+	common.SysLog(fmt.Sprintf("[GetTopUpByTradeNo] tradeNo=%s found, status=%s", tradeNo, topUp.Status))
 	return topUp
 }
 
 func Recharge(referenceId string, customerId string) (err error) {
+	common.SysLog(fmt.Sprintf("[Recharge] entry: referenceId=%s, customerId=%s", referenceId, customerId))
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -71,10 +74,13 @@ func Recharge(referenceId string, customerId string) (err error) {
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
+			common.SysLog(fmt.Sprintf("[Recharge] order not found for referenceId=%s, error: %v", referenceId, err))
 			return errors.New("充值订单不存在")
 		}
 
+		common.SysLog(fmt.Sprintf("[Recharge] order found: tradeNo=%s, status=%s, money=%f", topUp.TradeNo, topUp.Status, topUp.Money))
 		if topUp.Status != common.TopUpStatusPending {
+			common.SysLog(fmt.Sprintf("[Recharge] order status not pending: tradeNo=%s, status=%s", topUp.TradeNo, topUp.Status))
 			return errors.New("充值订单状态错误")
 		}
 
@@ -86,6 +92,7 @@ func Recharge(referenceId string, customerId string) (err error) {
 		}
 
 		quota = topUp.Money * common.QuotaPerUnit
+		common.SysLog(fmt.Sprintf("[Recharge] quota calculated: tradeNo=%s, money=%f, quotaPerUnit=%f, quota=%f", topUp.TradeNo, topUp.Money, common.QuotaPerUnit, quota))
 		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
 		if err != nil {
 			return err
@@ -96,9 +103,11 @@ func Recharge(referenceId string, customerId string) (err error) {
 
 	if err != nil {
 		common.SysError("topup failed: " + err.Error())
+		common.SysLog(fmt.Sprintf("[Recharge] failed: referenceId=%s, error: %v", referenceId, err))
 		return errors.New("充值失败，请稍后重试")
 	}
 
+	common.SysLog(fmt.Sprintf("[Recharge] success: tradeNo=%s, userId=%d, quota=%f", topUp.TradeNo, topUp.UserId, quota))
 	RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount))
 
 	return nil
@@ -237,6 +246,7 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo) (topups []*TopUp
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值
 func ManualCompleteTopUp(tradeNo string) error {
+	common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] entry: tradeNo=%s", tradeNo))
 	if tradeNo == "" {
 		return errors.New("未提供订单号")
 	}
@@ -254,15 +264,19 @@ func ManualCompleteTopUp(tradeNo string) error {
 		topUp := &TopUp{}
 		// 行级锁，避免并发补单
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] order not found: tradeNo=%s, error: %v", tradeNo, err))
 			return errors.New("充值订单不存在")
 		}
 
+		common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] order found: tradeNo=%s, status=%s, userId=%d", tradeNo, topUp.Status, topUp.UserId))
 		// 幂等处理：已成功直接返回
 		if topUp.Status == common.TopUpStatusSuccess {
+			common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] order already completed: tradeNo=%s", tradeNo))
 			return nil
 		}
 
 		if topUp.Status != common.TopUpStatusPending {
+			common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] order status not pending: tradeNo=%s, status=%s", tradeNo, topUp.Status))
 			return errors.New("订单状态不是待支付，无法补单")
 		}
 
@@ -278,9 +292,11 @@ func ManualCompleteTopUp(tradeNo string) error {
 			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
 		}
 		if quotaToAdd <= 0 {
+			common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] invalid quota: tradeNo=%s, quotaToAdd=%d", tradeNo, quotaToAdd))
 			return errors.New("无效的充值额度")
 		}
 
+		common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] quota calculated: tradeNo=%s, quotaToAdd=%d, paymentMethod=%s", tradeNo, quotaToAdd, topUp.PaymentMethod))
 		// 标记完成
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
@@ -299,14 +315,17 @@ func ManualCompleteTopUp(tradeNo string) error {
 	})
 
 	if err != nil {
+		common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] failed: tradeNo=%s, error: %v", tradeNo, err))
 		return err
 	}
 
+	common.SysLog(fmt.Sprintf("[ManualCompleteTopUp] success: tradeNo=%s, userId=%d, quotaToAdd=%d", tradeNo, userId, quotaToAdd))
 	// 事务外记录日志，避免阻塞
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney))
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string) (err error) {
+	common.SysLog(fmt.Sprintf("[RechargeCreem] entry: referenceId=%s, customerEmail=%s, customerName=%s", referenceId, customerEmail, customerName))
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -322,10 +341,13 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", referenceId).First(topUp).Error
 		if err != nil {
+			common.SysLog(fmt.Sprintf("[RechargeCreem] order not found: referenceId=%s, error: %v", referenceId, err))
 			return errors.New("充值订单不存在")
 		}
 
+		common.SysLog(fmt.Sprintf("[RechargeCreem] order found: tradeNo=%s, status=%s, amount=%d", topUp.TradeNo, topUp.Status, topUp.Amount))
 		if topUp.Status != common.TopUpStatusPending {
+			common.SysLog(fmt.Sprintf("[RechargeCreem] order status not pending: tradeNo=%s, status=%s", topUp.TradeNo, topUp.Status))
 			return errors.New("充值订单状态错误")
 		}
 
@@ -369,15 +391,18 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 
 	if err != nil {
 		common.SysError("creem topup failed: " + err.Error())
+		common.SysLog(fmt.Sprintf("[RechargeCreem] failed: referenceId=%s, error: %v", referenceId, err))
 		return errors.New("充值失败，请稍后重试")
 	}
 
+	common.SysLog(fmt.Sprintf("[RechargeCreem] success: tradeNo=%s, userId=%d, quota=%d", topUp.TradeNo, topUp.UserId, quota))
 	RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money))
 
 	return nil
 }
 
 func RechargeWaffo(tradeNo string) (err error) {
+	common.SysLog(fmt.Sprintf("[RechargeWaffo] entry: tradeNo=%s", tradeNo))
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -393,14 +418,18 @@ func RechargeWaffo(tradeNo string) (err error) {
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error
 		if err != nil {
+			common.SysLog(fmt.Sprintf("[RechargeWaffo] order not found: tradeNo=%s, error: %v", tradeNo, err))
 			return errors.New("充值订单不存在")
 		}
 
+		common.SysLog(fmt.Sprintf("[RechargeWaffo] order found: tradeNo=%s, status=%s, amount=%d", tradeNo, topUp.Status, topUp.Amount))
 		if topUp.Status == common.TopUpStatusSuccess {
+			common.SysLog(fmt.Sprintf("[RechargeWaffo] order already completed: tradeNo=%s", tradeNo))
 			return nil // 幂等：已成功直接返回
 		}
 
 		if topUp.Status != common.TopUpStatusPending {
+			common.SysLog(fmt.Sprintf("[RechargeWaffo] order status not pending: tradeNo=%s, status=%s", tradeNo, topUp.Status))
 			return errors.New("充值订单状态错误")
 		}
 
@@ -426,9 +455,11 @@ func RechargeWaffo(tradeNo string) (err error) {
 
 	if err != nil {
 		common.SysError("waffo topup failed: " + err.Error())
+		common.SysLog(fmt.Sprintf("[RechargeWaffo] failed: tradeNo=%s, error: %v", tradeNo, err))
 		return errors.New("充值失败，请稍后重试")
 	}
 
+	common.SysLog(fmt.Sprintf("[RechargeWaffo] success: tradeNo=%s, userId=%d, quotaToAdd=%d", topUp.TradeNo, topUp.UserId, quotaToAdd))
 	if quotaToAdd > 0 {
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
 	}

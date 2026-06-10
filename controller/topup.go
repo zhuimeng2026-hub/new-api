@@ -176,21 +176,29 @@ func RequestEpay(c *gin.Context) {
 	}
 
 	id := c.GetInt("id")
+	common.SysLog(fmt.Sprintf("[Epay] RequestEpay entry: userId=%d, amount=%d, paymentMethod=%s", id, req.Amount, req.PaymentMethod))
+
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
+		common.SysLog(fmt.Sprintf("[Epay] GetUserGroup failed: userId=%d, error=%v", id, err))
 		c.JSON(200, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
+	common.SysLog(fmt.Sprintf("[Epay] GetUserGroup success: userId=%d, group=%s", id, group))
+
 	payMoney := getPayMoney(req.Amount, group)
+	common.SysLog(fmt.Sprintf("[Epay] getPayMoney result: amount=%d, group=%s, payMoney=%.4f", req.Amount, group, payMoney))
 	if payMoney < 0.01 {
 		c.JSON(200, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
 
 	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+		common.SysLog(fmt.Sprintf("[Epay] ContainsPayMethod failed: paymentMethod=%s not found", req.PaymentMethod))
 		c.JSON(200, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
+	common.SysLog(fmt.Sprintf("[Epay] ContainsPayMethod passed: paymentMethod=%s", req.PaymentMethod))
 
 	callBackAddress := service.GetCallbackAddress()
 	returnUrl, _ := url.Parse(system_setting.ServerAddress + "/console/log")
@@ -199,9 +207,11 @@ func RequestEpay(c *gin.Context) {
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
 	client := GetEpayClient()
 	if client == nil {
+		common.SysLog(fmt.Sprintf("[Epay] GetEpayClient returned nil: payAddress=%s, epayId=%s", operation_setting.PayAddress, operation_setting.EpayId))
 		c.JSON(200, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
 		return
 	}
+	common.SysLog(fmt.Sprintf("[Epay] GetEpayClient success: tradeNo=%s, payMoney=%.2f, method=%s", tradeNo, payMoney, req.PaymentMethod))
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
@@ -212,9 +222,11 @@ func RequestEpay(c *gin.Context) {
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
+		common.SysLog(fmt.Sprintf("[Epay] Purchase failed: tradeNo=%s, error=%v", tradeNo, err))
 		c.JSON(200, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
+	common.SysLog(fmt.Sprintf("[Epay] Purchase success: tradeNo=%s, uri=%s", tradeNo, uri))
 	amount := req.Amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		dAmount := decimal.NewFromInt(int64(amount))
@@ -232,9 +244,11 @@ func RequestEpay(c *gin.Context) {
 	}
 	err = topUp.Insert()
 	if err != nil {
+		common.SysLog(fmt.Sprintf("[Epay] TopUp Insert failed: tradeNo=%s, userId=%d, amount=%d, error=%v", tradeNo, id, amount, err))
 		c.JSON(200, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
+	common.SysLog(fmt.Sprintf("[Epay] TopUp Insert success: tradeNo=%s, userId=%d, amount=%d, money=%.2f", tradeNo, id, amount, payMoney))
 	c.JSON(200, gin.H{"message": "success", "data": params, "url": uri})
 }
 
@@ -281,6 +295,7 @@ func UnlockOrder(tradeNo string) {
 }
 
 func EpayNotify(c *gin.Context) {
+	common.SysLog(fmt.Sprintf("[Epay] EpayNotify entry: method=%s", c.Request.Method))
 	var params map[string]string
 
 	if c.Request.Method == "POST" {
@@ -302,6 +317,7 @@ func EpayNotify(c *gin.Context) {
 		}, map[string]string{})
 	}
 
+	common.SysLog(fmt.Sprintf("[Epay] EpayNotify params count: %d", len(params)))
 	if len(params) == 0 {
 		log.Println("易支付回调参数为空")
 		_, _ = c.Writer.Write([]byte("fail"))
@@ -317,6 +333,7 @@ func EpayNotify(c *gin.Context) {
 		return
 	}
 	verifyInfo, err := client.Verify(params)
+	common.SysLog(fmt.Sprintf("[Epay] EpayNotify Verify: err=%v, verifyStatus=%v", err, err == nil && verifyInfo.VerifyStatus))
 	if err == nil && verifyInfo.VerifyStatus {
 		_, err := c.Writer.Write([]byte("success"))
 		if err != nil {
@@ -327,6 +344,7 @@ func EpayNotify(c *gin.Context) {
 		if err != nil {
 			log.Println("易支付回调写入失败")
 		}
+		common.SysLog(fmt.Sprintf("[Epay] EpayNotify signature verify failed: err=%v, verifyInfo=%v", err, verifyInfo))
 		log.Println("易支付回调签名验证失败")
 		return
 	}
@@ -337,9 +355,11 @@ func EpayNotify(c *gin.Context) {
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
 		if topUp == nil {
+			common.SysLog(fmt.Sprintf("[Epay] EpayNotify GetTopUpByTradeNo: tradeNo=%s not found", verifyInfo.ServiceTradeNo))
 			log.Printf("易支付回调未找到订单: %v", verifyInfo)
 			return
 		}
+		common.SysLog(fmt.Sprintf("[Epay] EpayNotify GetTopUpByTradeNo: tradeNo=%s found, currentStatus=%s, userId=%d, amount=%d", verifyInfo.ServiceTradeNo, topUp.Status, topUp.UserId, topUp.Amount))
 		if topUp.Status == "pending" {
 			topUp.Status = "success"
 			err := topUp.Update()
@@ -354,9 +374,11 @@ func EpayNotify(c *gin.Context) {
 			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
 			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true)
 			if err != nil {
+				common.SysLog(fmt.Sprintf("[Epay] EpayNotify IncreaseUserQuota failed: tradeNo=%s, userId=%d, quotaToAdd=%d, error=%v", verifyInfo.ServiceTradeNo, topUp.UserId, quotaToAdd, err))
 				log.Printf("易支付回调更新用户失败: %v", topUp)
 				return
 			}
+			common.SysLog(fmt.Sprintf("[Epay] EpayNotify IncreaseUserQuota success: tradeNo=%s, userId=%d, quotaToAdd=%d, money=%.2f", verifyInfo.ServiceTradeNo, topUp.UserId, quotaToAdd, topUp.Money))
 			log.Printf("易支付回调更新用户成功 %v", topUp)
 			model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
 		}

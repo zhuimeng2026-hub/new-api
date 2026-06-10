@@ -48,6 +48,9 @@ func GetUserByOAuthBinding(providerId int, providerUserId string) (*User, error)
 	var user User
 	err = DB.First(&user, binding.UserId).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("该用户已被删除")
+		}
 		return nil, err
 	}
 	return &user, nil
