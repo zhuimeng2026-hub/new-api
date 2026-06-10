@@ -16,6 +16,7 @@ import (
 	taskcommon "github.com/zhuimeng2026-hub/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/zhuimeng2026-hub/new-api/relay/common"
 	"github.com/zhuimeng2026-hub/new-api/service"
+	"github.com/zhuimeng2026-hub/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -212,6 +213,86 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return ChannelName
 }
 
+// EstimateBilling 根据请求参数返回 Seedance SKU 倍率，用于预扣费。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+
+	// 从 metadata 解析 resolution
+	var resolution string
+	if req.Metadata != nil {
+		if res, ok := req.Metadata["resolution"].(string); ok {
+			resolution = res
+		}
+	}
+	if resolution == "" {
+		resolution = "720p"
+	}
+
+	hasVideoRef := req.HasVideo()
+
+	sku := ResolveSeedanceSKU(resolution, hasVideoRef)
+
+	return map[string]float64{SeedanceOtherRatioKey: sku}
+}
+
+// AdjustBillingOnComplete 任务完成时根据实际 token 数和 SKU 倍率计算最终费用。
+// 返回正数触发差额结算，返回 0 保持预扣费不变。
+func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, taskResult *relaycommon.TaskInfo) int {
+	if taskResult.TotalTokens <= 0 {
+		return 0
+	}
+
+	// 读取提交时存储的 SKU 倍率
+	var skuMultiplier float64
+	if bc := task.PrivateData.BillingContext; bc != nil {
+		if sku, ok := bc.OtherRatios[SeedanceOtherRatioKey]; ok && sku > 0 {
+			skuMultiplier = sku
+		}
+	}
+	if skuMultiplier <= 0 {
+		skuMultiplier = 1.0
+	}
+
+	// 获取基础模型倍率
+	modelName := taskModelName(task)
+	modelRatio, hasRatio, _ := ratio_setting.GetModelRatio(modelName)
+	if !hasRatio || modelRatio <= 0 {
+		modelRatio = seedanceBaseModelRatio
+	}
+
+	// 获取分组倍率
+	group := task.Group
+	if group == "" {
+		user, err := model.GetUserById(task.UserId, false)
+		if err == nil {
+			group = user.Group
+		}
+	}
+	if group == "" {
+		return 0
+	}
+	groupRatio := ratio_setting.GetGroupRatio(group)
+	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
+	if hasUserGroupRatio {
+		groupRatio = userGroupRatio
+	}
+
+	// 最终费用 = totalTokens × modelRatio × skuMultiplier × groupRatio
+	actualQuota := int(float64(taskResult.TotalTokens) * modelRatio * skuMultiplier * groupRatio)
+	return actualQuota
+}
+
+// taskModelName 从 BillingContext 或 Properties 中获取模型名称。
+func taskModelName(task *model.Task) string {
+	if bc := task.PrivateData.BillingContext; bc != nil && bc.OriginModelName != "" {
+		return bc.OriginModelName
+	}
+	return task.Properties.OriginModelName
+}
+
 func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, error) {
 	r := requestPayload{
 		Model:   req.Model,
@@ -233,6 +314,18 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 				Type: "image_url",
 				ImageURL: &ImageURL{
 					URL: imgURL,
+				},
+			})
+		}
+	}
+
+	// Add videos if present (video references for seedance)
+	if req.HasVideo() {
+		for _, vidURL := range req.Videos {
+			r.Content = append(r.Content, ContentItem{
+				Type: "video",
+				Video: &VideoReference{
+					URL: vidURL,
 				},
 			})
 		}
