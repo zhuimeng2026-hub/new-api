@@ -388,6 +388,17 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		taskResult.Progress = t.Progress
 		taskResult.Reason = t.FailReason
 		task.Data = t.Data
+		// 提取 usage 信息（Seedance 等视频任务按 token 结算时需要）
+		var usageResp struct {
+			Usage struct {
+				CompletionTokens int `json:"completion_tokens"`
+				TotalTokens      int `json:"total_tokens"`
+			} `json:"usage"`
+		}
+		if err := common.Unmarshal(responseBody, &usageResp); err == nil && usageResp.Usage.TotalTokens > 0 {
+			taskResult.CompletionTokens = usageResp.Usage.CompletionTokens
+			taskResult.TotalTokens = usageResp.Usage.TotalTokens
+		}
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
 	}
