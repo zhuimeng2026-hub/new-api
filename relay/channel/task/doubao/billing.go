@@ -19,7 +19,7 @@ package doubao
 
 const (
 	// seedanceBaseModelRatio 是 720p 无视频参考场景的基础倍率
-	// 对应 kapon ¥46/M tokens: 46 / 7.3 / 2 * 1000 ≈ 3.29
+	// 对应 kapon ¥46/M tokens: 46 / 7.3 / 500000 * 1000000 ≈ 3.29
 	seedanceBaseModelRatio = 3.29
 
 	// SKU 倍率：以 720p 无视频参考为基准
