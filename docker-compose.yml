@@ -48,7 +48,8 @@ services:
       - postgres
 #      - mysql  # Uncomment if using MySQL
     networks:
-      - new-api-network
+      new-api-network:
+        ipv4_address: 172.21.0.4
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
       interval: 30s
@@ -59,8 +60,11 @@ services:
     image: redis:latest
     container_name: redis
     restart: always
+    ports:
+      - "6380:6379"
     networks:
-      - new-api-network
+      new-api-network:
+        ipv4_address: 172.21.0.2
 
   postgres:
     image: postgres:15
@@ -73,7 +77,8 @@ services:
     volumes:
       - new-api_pg_data:/var/lib/postgresql/data
     networks:
-      - new-api-network
+      new-api-network:
+        ipv4_address: 172.21.0.3
 #    ports:
 #      - "5432:5432"  # Uncomment if you need to access PostgreSQL from outside Docker
 
@@ -98,4 +103,5 @@ volumes:
 
 networks:
   new-api-network:
-    driver: bridge
+    external: true
+    name: scripts_new-api-network
