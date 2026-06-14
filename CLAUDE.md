@@ -37,6 +37,7 @@ bun run dev                   # Development server (proxies to localhost:3000)
 bun run build                 # Production build (outputs to web/dist)
 bun run lint / bun run lint:fix   # Prettier formatting
 bun run eslint / bun run eslint:fix  # ESLint checks
+bun run preview               # Serve production build locally
 ```
 
 ### Full Build (manual)
@@ -54,8 +55,11 @@ make start-backend  # Start Go backend only
 
 ### Docker
 ```bash
-docker-compose up -d    # Start with PostgreSQL + Redis
+docker-compose up -d              # Production: new-api + Redis + PostgreSQL (port 3000)
+docker-compose -f docker-compose.test.yml up -d  # Test environment (port 3001)
 ```
+
+Dockerfile is multi-stage: Bun frontend build → Go build (golang:1.26.1-alpine) → debian:bookworm-slim runtime. Uses `CGO_ENABLED=0`.
 
 ### Default Credentials
 - First run creates root user: username `root`, password `123456`
@@ -101,6 +105,7 @@ Key points:
 - **Databases**: SQLite, MySQL, PostgreSQL (all three must be supported)
 - **Cache**: Redis (go-redis) + in-memory cache
 - **Auth**: JWT, WebAuthn/Passkeys, OAuth (GitHub, Discord, OIDC, etc.)
+- **Payments**: Stripe, ePay, Waffo, Creem
 - **Frontend package manager**: Bun (preferred over npm/yarn/pnpm)
 
 ## Architecture
@@ -108,9 +113,17 @@ Key points:
 Layered architecture: Router -> Controller -> Service -> Model
 
 ```
-router/        — HTTP routing (API, relay, dashboard, web)
+router/        — HTTP routing (API, relay, dashboard, web, video)
+  router/main.go       — SetRouter() entry point, calls all sub-routers
+  router/api-router.go — /api/* routes (user, channel, token, log, etc.)
+  router/relay-router.go — /v1/*, /v1beta/*, /mj/*, /suno/*, /pg/*
+  router/video-router.go — /v1/video/*, /kling/v1/*, /jimeng/*
+  router/dashboard.go  — /dashboard/billing/* (legacy OpenAI-compatible)
+  router/web-router.go — SPA catch-all for embedded frontend
 controller/    — Request handlers
 service/       — Business logic (billing, channel affinity, quota, task orchestration)
+  service/openaicompat/ — Chat/Responses format conversion
+  service/passkey/     — WebAuthn/Passkey service
 model/         — Data models and DB access (GORM)
 relay/         — AI API relay/proxy with provider adapters
   relay/channel/ — Provider-specific adapters (openai/, claude/, gemini/, aws/, etc.)
@@ -162,6 +175,7 @@ web/           — React frontend
 - Go binary embeds the React frontend via `//go:embed web/dist` in `main.go`
 - Production build: build frontend first (`cd web && bun run build`), then build Go binary
 - Development: run frontend dev server (`bun run dev` proxies to Go backend on :3000) separately from `go run main.go`
+- `FRONTEND_BASE_URL` env var can redirect the frontend to an external URL, disabling the embedded SPA
 
 ## Internationalization (i18n)
 
