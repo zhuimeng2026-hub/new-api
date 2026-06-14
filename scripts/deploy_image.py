@@ -3,9 +3,12 @@
 deploy_image.py — Docker image loader & deployer for new-api
 
 Usage:
-    python3 deploy_image.py /path/to/new-api.tar.gz    # load & deploy
-    python3 deploy_image.py --no-backup image.tar.gz    # skip db backup
-    python3 deploy_image.py --check                     # check current status
+    python3 deploy_image.py /path/to/new-api.tar.gz              # load & deploy (auto-detect compose)
+    python3 deploy_image.py -c /opt/new-api image.tar.gz         # specify compose directory
+    python3 deploy_image.py -c /opt/new-api/docker-compose.yml image.tar.gz  # specify compose file
+    python3 deploy_image.py --no-backup image.tar.gz             # skip db backup
+    python3 deploy_image.py --check                              # check current status
+    python3 deploy_image.py -c /opt/new-api --check              # check with specific compose dir
 """
 
 import argparse
@@ -16,12 +19,67 @@ import time
 from pathlib import Path
 
 # --- configuration ---
-COMPOSE_DIR = Path(__file__).parent
-COMPOSE_FILE = COMPOSE_DIR / "docker-compose.yml"
 SERVICE_NAME = "new-api"
 HEALTH_URL = "http://localhost:3000/api/status"
 HEALTH_TIMEOUT_DEFAULT = 60  # seconds
 HEALTH_INTERVAL = 2  # seconds between retries
+
+# These will be resolved after argument parsing
+COMPOSE_DIR = None
+COMPOSE_FILE = None
+
+# --- path resolution ---
+def resolve_compose_path(compose_arg: str | None) -> tuple[Path, Path]:
+    """Resolve compose directory and file path from argument.
+
+    Args:
+        compose_arg: User-provided path (dir or file), or None for auto-detect
+
+    Returns:
+        Tuple of (compose_dir, compose_file)
+    """
+    if compose_arg:
+        target = Path(compose_arg).resolve()
+        if target.is_file() and target.name.endswith(('.yml', '.yaml')):
+            # User provided a compose file path directly
+            return target.parent, target
+        elif target.is_dir():
+            # User provided a directory
+            compose_file = target / "docker-compose.yml"
+            if compose_file.exists():
+                return target, compose_file
+            # Also check for docker-compose.yaml
+            compose_file = target / "docker-compose.yaml"
+            if compose_file.exists():
+                return target, compose_file
+            log_error(f"No docker-compose.yml found in {target}")
+            sys.exit(1)
+        else:
+            log_error(f"Path does not exist: {target}")
+            sys.exit(1)
+
+    # Auto-detect: check current working directory first
+    cwd = Path.cwd()
+    for name in ["docker-compose.yml", "docker-compose.yaml"]:
+        compose_file = cwd / name
+        if compose_file.exists():
+            log_info(f"Auto-detected compose file in current directory: {compose_file}")
+            return cwd, compose_file
+
+    # Fallback: check script's directory
+    script_dir = Path(__file__).parent.resolve()
+    for name in ["docker-compose.yml", "docker-compose.yaml"]:
+        compose_file = script_dir / name
+        if compose_file.exists():
+            log_info(f"Auto-detected compose file in script directory: {compose_file}")
+            return script_dir, compose_file
+
+    log_error("Could not find docker-compose.yml!")
+    log_error("Searched in:")
+    log_error(f"  - Current directory: {cwd}")
+    log_error(f"  - Script directory: {script_dir}")
+    log_error("Use -c/--compose-dir to specify the compose file location.")
+    sys.exit(1)
 
 # --- logging ---
 def log_info(msg: str):
@@ -263,16 +321,32 @@ def cmd_deploy(tar_path: Path, backup: bool = True, timeout: int = HEALTH_TIMEOU
 
 # --- main ---
 def main():
+    global COMPOSE_DIR, COMPOSE_FILE
+
     parser = argparse.ArgumentParser(
         description="Deploy new-api Docker image from tar.gz",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s image.tar.gz                    # Auto-detect compose location
+  %(prog)s -c /opt/new-api image.tar.gz    # Specify compose directory
+  %(prog)s -c /opt/new-api/docker-compose.yml image.tar.gz  # Specify compose file
+  %(prog)s --check                         # Check current status
+  %(prog)s -c /opt/new-api --check         # Check with specific compose dir
+        """,
     )
     parser.add_argument("image", nargs="?", help="Path to tar.gz image file")
+    parser.add_argument("-c", "--compose-dir", dest="compose_dir",
+                        help="Path to docker-compose.yml or its directory (default: auto-detect)")
     parser.add_argument("--no-backup", action="store_true", help="Skip database backup")
     parser.add_argument("--check", action="store_true", help="Check current status only")
-    parser.add_argument("--timeout", type=int, default=HEALTH_TIMEOUT_DEFAULT, help="Health check timeout in seconds")
+    parser.add_argument("--timeout", type=int, default=HEALTH_TIMEOUT_DEFAULT,
+                        help="Health check timeout in seconds (default: %(default)s)")
 
     args = parser.parse_args()
+
+    # Resolve compose path (must happen before any command)
+    COMPOSE_DIR, COMPOSE_FILE = resolve_compose_path(args.compose_dir)
 
     if args.check:
         cmd_check()

@@ -122,6 +122,8 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	if info.RelayMode == constant.RelayModeImagesGenerations {
 		if isSyncImageModel(info.OriginModelName) {
 
+		} else if strings.Contains(info.ChannelBaseUrl, "modelscope") {
+			req.Set("X-ModelScope-Async-Mode", "true")
 		} else {
 			req.Set("X-DashScope-Async", "enable")
 		}

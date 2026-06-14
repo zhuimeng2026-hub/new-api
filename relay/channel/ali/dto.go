@@ -1,6 +1,7 @@
 package ali
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/zhuimeng2026-hub/new-api/dto"
@@ -161,6 +162,60 @@ type AliResponse struct {
 	Output AliOutput `json:"output"`
 	Usage  AliUsage  `json:"usage"`
 	AliError
+}
+
+// ModelScopeResponse handles ModelScope's different response format
+type ModelScopeResponse struct {
+	TaskStatus string `json:"task_status"`
+	TaskId     string `json:"task_id"`
+	RequestId  string `json:"request_id"`
+	Output     struct {
+		Results []TaskResult `json:"results,omitempty"`
+		Choices []struct {
+			Message struct {
+				Content []AliMediaContent `json:"content,omitempty"`
+			} `json:"message,omitempty"`
+		} `json:"choices,omitempty"`
+	} `json:"output,omitempty"`
+	Errors *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"errors,omitempty"`
+}
+
+func (r *ModelScopeResponse) ToAliResponse() *AliResponse {
+	aliResp := &AliResponse{
+		Output: AliOutput{
+			TaskId:     r.TaskId,
+			TaskStatus: r.TaskStatus,
+			Results:    r.Output.Results,
+		},
+	}
+	if r.Errors != nil {
+		aliResp.AliError = AliError{
+			Code:    fmt.Sprintf("%d", r.Errors.Code),
+			Message: r.Errors.Message,
+		}
+	}
+	for _, choice := range r.Output.Choices {
+		aliResp.Output.Choices = append(aliResp.Output.Choices, struct {
+			FinishReason string `json:"finish_reason,omitempty"`
+			Message      struct {
+				Role             string            `json:"role,omitempty"`
+				Content          []AliMediaContent `json:"content,omitempty"`
+				ReasoningContent string            `json:"reasoning_content,omitempty"`
+			} `json:"message,omitempty"`
+		}{
+			Message: struct {
+				Role             string            `json:"role,omitempty"`
+				Content          []AliMediaContent `json:"content,omitempty"`
+				ReasoningContent string            `json:"reasoning_content,omitempty"`
+			}{
+				Content: choice.Message.Content,
+			},
+		})
+	}
+	return aliResp
 }
 
 type AliImageRequest struct {

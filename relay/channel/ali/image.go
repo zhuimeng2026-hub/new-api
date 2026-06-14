@@ -187,13 +187,17 @@ func oaiFormEdit2AliImageEdit(c *gin.Context, info *relaycommon.RelayInfo, reque
 }
 
 func updateTask(info *relaycommon.RelayInfo, taskID string) (*AliResponse, error, []byte) {
-	url := fmt.Sprintf("%s/api/v1/tasks/%s", info.ChannelBaseUrl, taskID)
-
-	var aliResponse AliResponse
+	var url string
+	isModelScope := strings.Contains(info.ChannelBaseUrl, "modelscope")
+	if isModelScope {
+		url = fmt.Sprintf("%s/v1/tasks/%s", info.ChannelBaseUrl, taskID)
+	} else {
+		url = fmt.Sprintf("%s/api/v1/tasks/%s", info.ChannelBaseUrl, taskID)
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return &aliResponse, err, nil
+		return &AliResponse{}, err, nil
 	}
 
 	req.Header.Set("Authorization", "Bearer "+info.ApiKey)
@@ -202,17 +206,32 @@ func updateTask(info *relaycommon.RelayInfo, taskID string) (*AliResponse, error
 	resp, err := client.Do(req)
 	if err != nil {
 		common.SysLog("updateTask client.Do err: " + err.Error())
-		return &aliResponse, err, nil
+		return &AliResponse{}, err, nil
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &AliResponse{}, err, nil
+	}
+
+	// ModelScope uses a different response format
+	if isModelScope {
+		var msResponse ModelScopeResponse
+		err = common.Unmarshal(responseBody, &msResponse)
+		if err != nil {
+			common.SysLog("updateTask ModelScope unmarshal err: " + err.Error())
+			return &AliResponse{}, err, nil
+		}
+		aliResp := msResponse.ToAliResponse()
+		return aliResp, nil, responseBody
+	}
 
 	var response AliResponse
 	err = common.Unmarshal(responseBody, &response)
 	if err != nil {
 		common.SysLog("updateTask NewDecoder err: " + err.Error())
-		return &aliResponse, err, nil
+		return &AliResponse{}, err, nil
 	}
 
 	return &response, nil, responseBody
@@ -279,6 +298,7 @@ func responseAli2OpenAIImage(c *gin.Context, response *AliResponse, originBody [
 
 func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*types.NewAPIError, *dto.Usage) {
 	responseFormat := c.GetString("response_format")
+	isModelScope := strings.Contains(info.ChannelBaseUrl, "modelscope")
 
 	var aliTaskResponse AliResponse
 	responseBody, err := io.ReadAll(resp.Body)
@@ -286,9 +306,20 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError), nil
 	}
 	service.CloseResponseBodyGracefully(resp)
-	err = common.Unmarshal(responseBody, &aliTaskResponse)
-	if err != nil {
-		return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError), nil
+
+	// ModelScope uses a different response format
+	if isModelScope {
+		var msResponse ModelScopeResponse
+		err = common.Unmarshal(responseBody, &msResponse)
+		if err != nil {
+			return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError), nil
+		}
+		aliTaskResponse = *msResponse.ToAliResponse()
+	} else {
+		err = common.Unmarshal(responseBody, &aliTaskResponse)
+		if err != nil {
+			return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError), nil
+		}
 	}
 
 	if aliTaskResponse.Message != "" {
@@ -306,7 +337,11 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 		originRespBody = responseBody
 	} else {
 		// 异步图片模型需要轮询任务结果
-		aliResponse, originRespBody, err = asyncTaskWait(c, info, aliTaskResponse.Output.TaskId)
+		taskId := aliTaskResponse.Output.TaskId
+		if taskId == "" {
+			taskId = aliTaskResponse.Output.TaskId
+		}
+		aliResponse, originRespBody, err = asyncTaskWait(c, info, taskId)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponse), nil
 		}
