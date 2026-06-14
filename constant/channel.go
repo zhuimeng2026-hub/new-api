@@ -56,6 +56,7 @@ const (
 	ChannelTypeReplicate      = 56
 	ChannelTypeCodex          = 57
 	ChannelTypeXiaomiMiMo     = 58
+	ChannelTypeModelScope     = 59
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )

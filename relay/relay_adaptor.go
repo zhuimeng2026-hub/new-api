@@ -21,6 +21,7 @@ import (
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/jina"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/minimax"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/mistral"
+	"github.com/zhuimeng2026-hub/new-api/relay/channel/modelscope"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/mokaai"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/moonshot"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/ollama"
@@ -123,6 +124,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &codex.Adaptor{}
 	case constant.APITypeXiaomiMiMo:
 		return &xiaomimimo.Adaptor{}
+	case constant.APITypeModelScope:
+		return &modelscope.Adaptor{}
 	}
 	return nil
 }
