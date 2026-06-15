@@ -1,7 +1,6 @@
 package modelscope
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"github.com/zhuimeng2026-hub/new-api/dto"
 	"github.com/zhuimeng2026-hub/new-api/logger"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel"
+	"github.com/zhuimeng2026-hub/new-api/relay/channel/openai"
 	relaycommon "github.com/zhuimeng2026-hub/new-api/relay/common"
 	relayconstant "github.com/zhuimeng2026-hub/new-api/relay/constant"
 	"github.com/zhuimeng2026-hub/new-api/service"
@@ -94,18 +94,19 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	if info.RelayMode != relayconstant.RelayModeImagesGenerations {
-		return channel.DoApiRequest(a, c, info, nil)
+		adaptor := &openai.Adaptor{}
+		return adaptor.DoResponse(c, resp, info)
 	}
 
-	responseBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+	responseBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, types.NewOpenAIError(readErr, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 	service.CloseResponseBodyGracefully(resp)
 
 	var msResponse ModelScopeImageResponse
-	if err := common.Unmarshal(responseBody, &msResponse); err != nil {
-		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	if unmarshalErr := common.Unmarshal(responseBody, &msResponse); unmarshalErr != nil {
+		return nil, types.NewOpenAIError(unmarshalErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
 	if msResponse.Message != "" {
@@ -191,7 +192,7 @@ func (a *Adaptor) buildImageResponse(c *gin.Context, info *relaycommon.RelayInfo
 	data := make([]dto.ImageData, len(imageURLs))
 	for i, url := range imageURLs {
 		data[i] = dto.ImageData{
-			URL:           url,
+			Url:           url,
 			RevisedPrompt: "",
 		}
 	}
@@ -230,5 +231,9 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
 	return nil, errors.New("not implemented")
 }
