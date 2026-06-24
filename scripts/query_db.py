@@ -87,7 +87,7 @@ def parse_args():
     p.add_argument("--token", type=int, default=72, help="令牌 ID (默认 72)")
     p.add_argument("--ip", default="175.178.33.107", help="IP 地址")
     p.add_argument("--model", default="deepseek-v4-flash", help="模型名")
-    p.add_argument("-n", type=int, default=20, help="每条查询条数 (默认 20)")
+    p.add_argument("-n", type=int, default=10, help="每条查询条数 (默认 10)")
     return p.parse_args()
 
 
@@ -151,7 +151,7 @@ def main():
         FROM logs
         WHERE model_name = '{args.model}'
         GROUP BY ip
-        ORDER BY count(*) DESC LIMIT 20
+        ORDER BY count(*) DESC LIMIT {args.n}
     """), ["IP", "Count", "最早", "最晚"])
 
 
