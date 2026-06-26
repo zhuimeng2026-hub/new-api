@@ -6,18 +6,23 @@ sync_modelscope_models.py — 同步魔搭社区可用模型到 new-api 渠道
   1. 调用魔搭推理 API (/v1/models) 获取当前可用模型列表
   2. 从 new-api API 获取渠道配置（models、model_mapping）
   3. 对比差异，新增/删除模型
-  4. 通过 new-api API 更新渠道
+  4. 可选：对新增模型发请求验证是否真正可用
+  5. 通过 new-api API 更新渠道
 
 用法:
-  python3 sync_modelscope_models.py                   # 执行同步
-  python3 sync_modelscope_models.py --dry-run         # 只预览，不执行
-  python3 sync_modelscope_models.py --channel-id 9    # 指定渠道 ID（默认 9）
+  python3 sync_modelscope_models.py                         # 执行同步
+  python3 sync_modelscope_models.py --dry-run               # 只预览，不执行
+  python3 sync_modelscope_models.py --test                  # 同步前验证新模型可用性
+  python3 sync_modelscope_models.py --test --dry-run        # 只预览+验证，不执行
+  python3 sync_modelscope_models.py --channel-id 9          # 指定渠道 ID（默认 9）
   python3 sync_modelscope_models.py --ignore Qwen/Qwen3-4B  # 忽略指定模型
 """
 
 import argparse
 import json
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
@@ -123,9 +128,75 @@ def get_upstream_models(base_url, modelscope_key):
     return models
 
 
+def test_model(base_url, modelscope_key, model_id, timeout=15):
+    """测试单个模型是否真正可用（发送最小请求）
+    返回 (model_id, ok, error_msg)
+    """
+    url = f"{base_url}/v1/chat/completions"
+    body = {
+        "model": model_id,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+        "stream": False,
+    }
+    headers = {
+        "Authorization": f"Bearer {modelscope_key}",
+        "Content-Type": "application/json",
+    }
+    data = json.dumps(body).encode()
+    req = Request(url, method="POST", headers=headers, data=data)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            result = json.loads(resp.read().decode())
+            # 有 choices 返回就算成功
+            if result.get("choices"):
+                return (model_id, True, "")
+            return (model_id, False, "no choices in response")
+    except HTTPError as e:
+        err_body = ""
+        try:
+            err_body = e.read().decode()
+            err_json = json.loads(err_body)
+            err_msg = err_json.get("error", {}).get("message", err_body[:200])
+        except Exception:
+            err_msg = err_body[:200] if err_body else f"HTTP {e.code}"
+        return (model_id, False, err_msg)
+    except Exception as e:
+        return (model_id, False, str(e)[:200])
+
+
+def test_models(base_url, modelscope_key, model_list, max_workers=5):
+    """并发测试多个模型，返回 (passed, failed) 两个列表"""
+    passed = []
+    failed = []
+    total = len(model_list)
+    done = 0
+
+    print(f"{BOLD}测试 {total} 个模型...{RESET}")
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(test_model, base_url, modelscope_key, m): m
+            for m in model_list
+        }
+        for future in as_completed(futures):
+            model_id, ok, err = future.result()
+            done += 1
+            if ok:
+                passed.append(model_id)
+                print(f"  {GREEN}✓{RESET} [{done}/{total}] {model_id}")
+            else:
+                failed.append((model_id, err))
+                print(f"  {RED}✗{RESET} [{done}/{total}] {model_id} — {DIM}{err}{RESET}")
+
+    return passed, failed
+
+
 def main():
     parser = argparse.ArgumentParser(description="同步魔搭社区可用模型到 new-api 渠道")
     parser.add_argument("--dry-run", action="store_true", help="只输出差异，不执行更新")
+    parser.add_argument("--test", action="store_true", help="同步前对新增模型发请求验证可用性")
+    parser.add_argument("--workers", type=int, default=5, help="并发测试数（默认 5）")
     parser.add_argument("--channel-id", type=int, default=9, help="渠道 ID（默认 9）")
     parser.add_argument("--ignore", action="append", default=[], help="不添加的模型（可多次使用）")
     parser.add_argument("--verbose", action="store_true", help="详细输出")
@@ -235,6 +306,17 @@ def main():
             if v in to_remove:
                 mapping_to_remove.append((k, v))
 
+    # ── 测试新模型 ──────────────────────────────────────────
+    test_failed = []  # [(model_id, error_msg), ...]
+    if args.test and to_add:
+        print()
+        passed, test_failed = test_models(
+            upstream_url, modelscope_key, to_add, max_workers=args.workers)
+        # 从 to_add 中移除测试失败的模型
+        failed_ids = {f[0] for f in test_failed}
+        to_add = [m for m in to_add if m not in failed_ids]
+        print()
+
     # ── 输出报告 ──────────────────────────────────────────────
     print(f"上游可用: {CYAN}{len(upstream_models)}{RESET}  |  "
           f"本地已有: {CYAN}{len(local_models)}{RESET}  |  "
@@ -269,6 +351,11 @@ def main():
         print(f"\n{RED}[~] 清理映射 ({len(mapping_to_remove)}):{RESET}")
         for k, v in mapping_to_remove:
             print(f"    {RED}~ {k} -> {v}{RESET}")
+
+    if test_failed:
+        print(f"\n{RED}[✗] 测试失败，不添加 ({len(test_failed)}):{RESET}")
+        for m, err in test_failed:
+            print(f"    {RED}✗ {m} — {DIM}{err}{RESET}")
 
     # ── 执行更新 ──────────────────────────────────────────────
     if args.dry_run:
