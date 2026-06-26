@@ -211,7 +211,46 @@ def cmd_mask(args):
     print(f'脱敏: {mask_token_key(args.key)}')
 
 # ── 入口 ──────────────────────────────────────────────────
+USAGE = """\033[1m令牌模型管理脚本\033[0m —— 通过 new-api API 管理令牌的 model_limits（可用模型）
+
+\033[33m用法:\033[0m
+  python3 token_models_update.py <command> [options]
+
+\033[33m命令:\033[0m
+  show     查看令牌信息
+  add      追加模型（去重）
+  remove   移除模型
+  set      覆盖设置模型列表
+  mask     模拟令牌 key 脱敏
+
+\033[33m示例:\033[0m
+  # 查看令牌当前模型列表
+  python3 token_models_update.py show --id 148
+
+  # 给令牌添加模型（追加，去重）
+  python3 token_models_update.py add --id 148 --models gpt-5.3-codex,mimo-v2.5-pro
+
+  # 从令牌移除模型
+  python3 token_models_update.py remove --id 148 --models gpt-5.3-codex
+
+  # 覆盖设置（替换为指定列表）
+  python3 token_models_update.py set --id 148 --models gpt-5.3-codex,mimo-v2.5-pro
+
+  # 查看 API 脱敏结果
+  python3 token_models_update.py mask bSgP7jxeURoTVfuXMacBb80V6W0tLEF0zmPFl6jeTqALxxhf
+
+\033[33m通用选项:\033[0m
+  --id N          令牌 ID（必填）
+  --models LIST   模型名，逗号分隔
+  -y, --yes       跳过确认提示
+  -h, --help      显示 argparse 帮助详情
+"""
+
 def main():
+    if len(sys.argv) == 1:
+        print(USAGE)
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
         description='令牌模型管理 —— 通过 new-api API 管理令牌的 model_limits')
     sub = parser.add_subparsers(dest='cmd', required=True)
