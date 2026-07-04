@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""直连 + 网关验证 mimo-v2.5-pro-ultraspeed 模型"""
+"""直连 + 网关验证 mimo-v2.5-pro 模型"""
 
 import subprocess, json
 
-MODEL = "mimo-v2.5-pro-ultraspeed"
+MODEL = "mimo-v2.5-pro"
 CH_KEY = "sk-co9ij893u4a07nm3fc4f2aj4921djy1omk9p18d3cu38qokr"
 GW_TOKEN = "t7npV6raGbd2f4HOMR4RRi0gsK2MbvPWk5TMs4i8Q9eJ80cG"
 GW_URL = "https://aikey.aixifs.com/v1/chat/completions"

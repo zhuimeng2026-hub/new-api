@@ -86,7 +86,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="直查 new-api PostgreSQL 日志")
     p.add_argument("--token", type=int, default=72, help="令牌 ID (默认 72)")
     p.add_argument("--ip", default="175.178.33.107", help="IP 地址")
-    p.add_argument("--model", default="deepseek-v4-flash", help="模型名")
+    p.add_argument("--model", default="mimo-v2.5-pro", help="模型名")
     p.add_argument("-n", type=int, default=10, help="每条查询条数 (默认 10)")
     return p.parse_args()
 
