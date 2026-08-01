@@ -32,6 +32,7 @@ services:
       - TZ=Asia/Shanghai
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
+      - SESSION_SECRET=supersecretkey123
       - GLOBAL_API_RATE_LIMIT=300  # 全局API速率限制，默认180次/180秒
       - CRITICAL_RATE_LIMIT=60  # 关键端点速率限制，默认20次
       - CRITICAL_RATE_LIMIT_DURATION=600  # 关键端点限制周期，默认1200秒(20分钟)
