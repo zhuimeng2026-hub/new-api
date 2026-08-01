@@ -57,6 +57,7 @@ const (
 	ChannelTypeCodex          = 57
 	ChannelTypeXiaomiMiMo     = 58
 	ChannelTypeModelScope     = 59
+	ChannelTypeAgnes          = 60
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -122,6 +123,7 @@ var ChannelBaseURLs = []string{
 	"https://chatgpt.com",                       //57
 	"https://api.xiaomimimo.com",                //58
 	"https://api-inference.modelscope.cn",       //59
+	"https://apihub.agnes-ai.com/v1",            //60
 }
 
 var ChannelTypeNames = map[int]string{
@@ -181,6 +183,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeCodex:          "Codex",
 	ChannelTypeXiaomiMiMo:     "XiaomiMiMo",
 	ChannelTypeModelScope:     "ModelScope",
+	ChannelTypeAgnes:          "Agnes",
 }
 
 func GetChannelTypeName(channelType int) string {

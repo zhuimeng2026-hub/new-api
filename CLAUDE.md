@@ -46,11 +46,11 @@ cd web && bun install && bun run build && cd ..
 GOEXPERIMENT=greenteagc go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)' -extldflags '-static'" -o new-api
 ```
 
-### Makefile (shortcut)
+### Makefile Targets
 ```bash
-make                # Build frontend + start backend dev server
-make build-frontend # Build frontend only
-make start-backend  # Start Go backend only
+make all                       # Build frontend then start backend
+make build-frontend            # cd web && bun install && bun run build
+make start-backend             # go run main.go
 ```
 
 ### Docker
@@ -73,6 +73,9 @@ See `.env.example` and README.md for the full list. Common ones:
 - `STREAMING_TIMEOUT` — Streaming timeout in seconds (default: 300)
 - `STREAM_SCANNER_MAX_BUFFER_MB` — Max per-line buffer for stream scanner (default: 64)
 - `MAX_REQUEST_BODY_MB` — Max request body size after decompression (default: 32)
+
+### VERSION File
+The `VERSION` file contains the version string embedded into the Go binary during build. Example: `v1.0.0-20260607`
 
 ### Test Setup Pattern
 
@@ -289,12 +292,3 @@ Direct database modification (UPDATE/DELETE/INSERT via `psql`) is **forbidden**.
 - Admin credentials: `new_admin_key` and `New-Api-User` from `/opt/new-api/.env`
 
 **Exception:** Emergency database fixes when the API itself is broken (e.g., schema migration issues). In that case, also clear the relevant Redis cache manually after the DB change.
-
-### Rule 8: No Docker Build on This Machine
-
-**Docker 构建操作在本机被严格禁止。**
-
-- ❌ 禁止：`docker build`、`docker-compose build`、`docker buildx build`、任何涉及镜像构建的命令
-- ✅ 允许：`docker run`、`docker logs`、`docker ps`、`docker exec`、`docker stop`、`docker rm` 等运维操作
-
-**Why:** 用户有专门的构建环境，本机不应承担构建任务。如需构建镜像，应告知用户并在合适的环境中执行。

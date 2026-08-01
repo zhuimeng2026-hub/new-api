@@ -28,7 +28,10 @@ var AutomaticRetryStatusCodeRanges = []StatusCodeRange{
 	{Start: 525, End: 599},
 }
 
-var alwaysSkipRetryStatusCodes = map[int]struct{}{}
+var alwaysSkipRetryStatusCodes = map[int]struct{}{
+	504: {},
+	524: {},
+}
 
 var alwaysSkipRetryCodes = map[types.ErrorCode]struct{}{
 	types.ErrorCodeBadResponseBody: {},

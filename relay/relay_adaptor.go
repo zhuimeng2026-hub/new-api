@@ -46,6 +46,7 @@ import (
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/volcengine"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/xai"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/xiaomimimo"
+	"github.com/zhuimeng2026-hub/new-api/relay/channel/agnes"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/xunfei"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/zhipu"
 	"github.com/zhuimeng2026-hub/new-api/relay/channel/zhipu_4v"
@@ -126,6 +127,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &xiaomimimo.Adaptor{}
 	case constant.APITypeModelScope:
 		return &modelscope.Adaptor{}
+	case constant.APITypeAgnes:
+		return &agnes.Adaptor{}
 	}
 	return nil
 }
