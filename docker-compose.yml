@@ -16,12 +16,12 @@ version: '3.4' # For compatibility with older Docker versions
 
 services:
   new-api:
-    image: new-api:local
+    image: new-api:agnes-patch
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
     ports:
-      - "3000:3000"
+      - "13000:3000"
     volumes:
       - ./data:/data
       - ./logs:/app/logs
@@ -48,8 +48,7 @@ services:
       - postgres
 #      - mysql  # Uncomment if using MySQL
     networks:
-      new-api-network:
-        ipv4_address: 172.21.0.4
+      - new-api-network
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
       interval: 30s
@@ -61,10 +60,9 @@ services:
     container_name: redis
     restart: always
     ports:
-      - "6380:6379"
+      - "6381:6379"
     networks:
-      new-api-network:
-        ipv4_address: 172.21.0.2
+      - new-api-network
 
   postgres:
     image: postgres:15
@@ -77,8 +75,7 @@ services:
     volumes:
       - new-api_pg_data:/var/lib/postgresql/data
     networks:
-      new-api-network:
-        ipv4_address: 172.21.0.3
+      - new-api-network
 #    ports:
 #      - "5432:5432"  # Uncomment if you need to access PostgreSQL from outside Docker
 
@@ -103,5 +100,3 @@ volumes:
 
 networks:
   new-api-network:
-    external: true
-    name: scripts_new-api-network
